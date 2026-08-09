@@ -1,0 +1,9 @@
+{
+	"$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+	"mcpServers": {
+		"marian-mentoring": {
+			"type": "streamable-http",
+			"url": "https://www.marian.coach/mcp/mentoring"
+		}
+	}
+}

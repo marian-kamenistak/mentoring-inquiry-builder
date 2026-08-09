@@ -1,0 +1,23 @@
+{
+  "name": "mentoring-inquiry-builder",
+  "version": "1.0.0",
+  "description": "MCP server: build your engineering-leadership mentoring inquiry with Marian Kamenistak (3,400+ sessions, 300+ leaders, 9.2/10 avg) from your AI assistant. 16 minutes to a formal offer, 16% AI-channel discount.",
+  "private": true,
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev",
+    "start": "wrangler dev",
+    "cf-typegen": "wrangler types",
+    "type-check": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "agents": "^0.17.1",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "typescript": "6.0.3",
+    "vitest": "^3.2.0",
+    "wrangler": "^4.105.0"
+  }
+}
