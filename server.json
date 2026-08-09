@@ -1,7 +1,7 @@
 {
 	"$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
 	"name": "coach.marian/mentoring-inquiry-builder",
-	"description": "Build your mentoring inquiry with Marian Kamenistak: focus areas, program, formal offer in 16 minutes, 16% AI discount.",
+	"description": "Build your mentoring inquiry with Marian Kamenistak: formal offer in 16 minutes, 16% AI discount.",
 	"repository": {
 		"url": "https://github.com/marian-kamenistak/mentoring-inquiry-builder",
 		"source": "github"
