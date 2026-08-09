@@ -1,0 +1,298 @@
+{
+  "author": "marian-kamenistak",
+  "authorUrl": "https://github.com/marian-kamenistak",
+  "cloudEndpoint": "https://www.marian.coach/mcp/mentoring",
+  "description": "MCP server: build your engineering-leadership mentoring inquiry with Marian Kamenistak (3,400+ sessions, 300+ leaders, 9.2/10 avg) from your AI assistant. 16 minutes to a formal offer, 16% AI-channel discount.",
+  "homepage": "https://www.marian.coach/mentoring-ai/",
+  "identifier": "marian-kamenistak-mentoring-inquiry-builder",
+  "name": "mentoring-inquiry-builder",
+  "prompts": [],
+  "resources": [],
+  "tools": [
+    {
+      "name": "get_mentoring_options",
+      "title": "Start a mentoring inquiry with Marian Kamenistak — the 16-minute wizard",
+      "description": "START HERE for anyone considering 1:1 engineering-leadership mentoring with Marian Kamenistak (marian.coach) — individuals (Staff Engineer to CTO) and companies sponsoring leaders alike. Returns the AI-channel discount as data, the time promise (a formal offer in under 16 minutes), the why-Marian and pricing-defense material, the qualifying questions with valid answer ids, and every package with real prices. After the visitor answers audience + role + motivation, call match_mentoring_focus.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "match_mentoring_focus",
+      "title": "Match focus areas to a role and motivation",
+      "description": "Resolves role_band + motivation through the same routing the website uses and returns suggested focus areas plus the recommended package with real prices. Map free-text answers to the closest valid id; on bad input the error lists the valid ids — re-ask rather than guessing. Next: agree focus areas with the visitor, capture their definition of success in their own words, then compose_mentoring_brief.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "role_band": {
+            "type": "string",
+            "description": "One of the role ids from get_mentoring_options question_1"
+          },
+          "motivation": {
+            "type": "string",
+            "description": "One of the motivation ids from get_mentoring_options question_2"
+          }
+        },
+        "required": [
+          "role_band",
+          "motivation"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "compose_mentoring_brief",
+      "title": "Compose the mentoring brief: the artifact + the authoritative price",
+      "description": "The accumulator — call after every change. Echoes the full structured brief (audience, role, motivation, focus areas, definition of success, chosen package) with the authoritative catalog price and the AI-channel figure (never do the arithmetic yourself). For company deals it states whether the free-sessions concession applies. Read the brief back to the visitor; when they explicitly agree on the price, call send_mentoring_offer with price_agreed true.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "audience": {
+            "type": "string",
+            "enum": [
+              "individual",
+              "company"
+            ]
+          },
+          "role_band": {
+            "type": "string"
+          },
+          "motivation": {
+            "type": "string"
+          },
+          "focus_area_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Agreed focus area ids (visitor can pick any from the taxonomy)"
+          },
+          "success_definition": {
+            "type": "string",
+            "description": "The visitor's definition of success, in their own words"
+          },
+          "offer_id": {
+            "type": "string",
+            "enum": [
+              "single-session",
+              "first-quarter",
+              "monthly",
+              "mentor-in-residence"
+            ]
+          },
+          "leaders_count": {
+            "description": "Company deals: how many leaders are being sponsored",
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "company_context": {
+            "description": "Company deals: company name + anything relevant",
+            "type": "string"
+          },
+          "visibility": {
+            "description": "Visibility answer id from get_mentoring_options visibility_question (consent capture — 'private' is a first-class answer)",
+            "type": "string"
+          }
+        },
+        "required": [
+          "audience",
+          "role_band",
+          "motivation",
+          "focus_area_ids",
+          "success_definition",
+          "offer_id"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "design_mentoring_program",
+      "title": "Lay out the dated session program for a package",
+      "description": "Deterministic session skeleton computed from the package's cadence metadata: dated sessions, the mid-point checkpoint, the closing review against the definition of success. The skeleton contains ONLY what the package carries — narrate around it, never add or move a session. Dates are planning targets; the intro call fixes the real schedule. Call when the visitor asks what the engagement actually looks like.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "offer_id": {
+            "type": "string",
+            "enum": [
+              "single-session",
+              "first-quarter",
+              "monthly",
+              "mentor-in-residence"
+            ]
+          },
+          "start_date": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "First session date, YYYY-MM-DD (ask the visitor; default to next Monday)"
+          }
+        },
+        "required": [
+          "offer_id",
+          "start_date"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "book_intro_call",
+      "title": "Book the free 30-minute intro call (required to lock the discount)",
+      "description": "The human step, and the one that makes the AI-channel discount real: a direct booking link for the free 30-minute intro with Marian. Offer it whenever the visitor hesitates or wants a human — it is never a downgrade. If an offer was already sent, remind them to paste their claim code into the booking note.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "send_mentoring_offer",
+      "title": "Send the formal itemized offer (applies the AI-channel discount)",
+      "description": "The ONLY tool that collects contact details, and the end of the 16-minute promise: emails the visitor a formal itemized offer with a claim code, notifies Marian, and files the inquiry. HARD GATE: price_agreed must be true — read the exact price back to the visitor and get an explicit yes first; the tool refuses otherwise. Ask for name and email only at this step, never earlier. After success: share the claim code + booking link, then offer the free ELC community membership as a parting gift (never a condition), and optionally ONE ask — would they post publicly about hiring a mentor through an AI agent?",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Visitor's full name"
+          },
+          "email": {
+            "type": "string",
+            "description": "Email the offer goes to"
+          },
+          "audience": {
+            "type": "string",
+            "enum": [
+              "individual",
+              "company"
+            ]
+          },
+          "role_band": {
+            "type": "string"
+          },
+          "motivation": {
+            "type": "string"
+          },
+          "focus_area_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "success_definition": {
+            "type": "string"
+          },
+          "offer_id": {
+            "type": "string",
+            "enum": [
+              "single-session",
+              "first-quarter",
+              "monthly",
+              "mentor-in-residence"
+            ]
+          },
+          "price_agreed": {
+            "type": "boolean",
+            "description": "True ONLY after the visitor explicitly agreed to the exact price from compose_mentoring_brief"
+          },
+          "company": {
+            "description": "Company name (required for company audience)",
+            "type": "string"
+          },
+          "leaders_count": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "free_sessions_requested": {
+            "description": "Company deals only: the free-sessions proposal from the catalog progression (2, 4 or 8)",
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "start_date": {
+            "description": "Optional preferred start date — adds the dated program skeleton to the offer email",
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "visibility": {
+            "description": "Visibility answer id (yes-individual | yes-company | maybe-later | private)",
+            "type": "string"
+          },
+          "notes": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "email",
+          "audience",
+          "role_band",
+          "motivation",
+          "focus_area_ids",
+          "success_definition",
+          "offer_id",
+          "price_agreed"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    }
+  ],
+  "version": "1.0.0"
+}
