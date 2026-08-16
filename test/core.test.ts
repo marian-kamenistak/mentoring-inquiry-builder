@@ -15,6 +15,8 @@ import { composeBrief } from "../src/core/brief";
 import { guardrailLines } from "../src/core/guardrails";
 import { matchMentoringFocus } from "../src/core/match";
 import { mentoringOptions } from "../src/core/options";
+import { submitInquiry } from "../src/core/submit";
+import type { Attribution } from "../src/core/attribution";
 
 describe("catalog pricing", () => {
 	it("first-quarter arithmetic agrees with the published pct and floor", () => {
@@ -135,5 +137,34 @@ describe("guardrails + options carry the magnet", () => {
 		expect(offers.find((o) => o.id === "single-session")!.price).toBe(430);
 		expect(offers.find((o) => o.id === "monthly")!.price).toBe(790);
 		expect(offers.find((o) => o.id === "mentor-in-residence")!.price).toBe(6498);
+	});
+});
+
+describe("submitInquiry with attribution (test mode — no network)", () => {
+	const attribution: Attribution = {
+		v: 1,
+		first: { at: "2026-08-16T10:00:00.000Z", url: "/?utm_source=linkedin&utm_campaign=paid-a-cto", src: "linkedin", med: "paid-social", cmp: "paid-a-cto" },
+		last: { at: "2026-08-17T10:00:00.000Z", url: "/pricing/?gclid=xyz", src: "google", med: "cpc", cmp: "paid-c-em", gclid: "xyz" },
+	};
+
+	it("still returns ok:true and test:true when a +test@ email carries attribution (Attio/Resend both skipped)", async () => {
+		const r = await submitInquiry(
+			{},
+			{
+				name: "Test Person",
+				email: "w1check+test@example.com",
+				audience: "individual",
+				role_band: "em",
+				motivation: "scale-jump",
+				focus_area_ids: ["scaling-org"],
+				success_definition: "I stop being the bottleneck for two teams",
+				offer_id: "first-quarter",
+				price_agreed: true,
+				channel: "chat",
+				attribution,
+			},
+		);
+		expect(r.ok).toBe(true);
+		if (r.ok) expect(r.test).toBe(true);
 	});
 });

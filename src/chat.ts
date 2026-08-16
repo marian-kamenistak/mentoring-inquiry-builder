@@ -18,6 +18,7 @@
  * Turnstile solves once, then an HMAC session token (~2h) covers the conversation.
  * CHAT_ENABLED kill switch: anything but "false" is on.
  */
+import { parseAttributionCookie, type Attribution } from "./core/attribution";
 import { eur, meta, offerById, offers } from "./core/catalog";
 import { guardrailBlock } from "./core/guardrails";
 import { composeBrief } from "./core/brief";
@@ -165,7 +166,7 @@ const TOOLS = [
 
 type SideEvent = Record<string, unknown>;
 
-async function runTool(env: ChatEnv, name: string, input: any, side: SideEvent[]): Promise<unknown> {
+async function runTool(env: ChatEnv, name: string, input: any, side: SideEvent[], attribution?: Attribution): Promise<unknown> {
 	switch (name) {
 		case "get_mentoring_options": {
 			const o = mentoringOptions();
@@ -246,6 +247,7 @@ async function runTool(env: ChatEnv, name: string, input: any, side: SideEvent[]
 				start_date: input.start_date ? String(input.start_date) : undefined,
 				notes: input.notes ? String(input.notes) : undefined,
 				channel: "chat",
+				attribution,
 			});
 			if (r.ok) {
 				side.push({
@@ -288,6 +290,8 @@ export async function handleChat(request: Request, env: ChatEnv): Promise<Respon
 	} catch {
 		return fail("invalid_json");
 	}
+
+	const attribution = parseAttributionCookie(request.headers.get("cookie")) ?? undefined;
 
 	const ip = request.headers.get("cf-connecting-ip") ?? "unknown";
 	if (env.CHAT_RATE_LIMITER) {
@@ -424,7 +428,7 @@ export async function handleChat(request: Request, env: ChatEnv): Promise<Respon
 					const results: any[] = [];
 					for (const tu of toolUses) {
 						const side: SideEvent[] = [];
-						const out = await runTool(env, tu.name, tu.input ?? {}, side);
+						const out = await runTool(env, tu.name, tu.input ?? {}, side, attribution);
 						for (const s of side) emit(s);
 						results.push({ type: "tool_result", tool_use_id: tu.id, content: JSON.stringify(out) });
 					}
