@@ -24,9 +24,30 @@ export type HookEnv = {
 const json = (data: unknown, status = 200): Response =>
 	new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json; charset=utf-8" } });
 
-/** True for cancellation/decline/removal payloads — never advance the pipeline on these. */
+/** True for cancellation/decline/removal payloads — never advance the pipeline on these.
+ * Scoped to the VALUE of an event-type-ish key (type/event/status/…) so a legitimate booking
+ * payload that merely contains "cancel_url" or "cancellation policy" text isn't mistaken for one.
+ * Falls back to a raw-text scan only when no such key is present (non-JSON / unknown shape). */
 export function isCancellationPayload(raw: string): boolean {
+	const typed = raw.match(/"(?:type|event|event_type|eventType|status|action|kind)"\s*:\s*"([^"]*)"/gi);
+	if (typed && typed.length) {
+		return typed.some((m) => {
+			const value = m.match(/:\s*"([^"]*)"/)?.[1] ?? "";
+			return /cancel|declin|delet|remov/i.test(value);
+		});
+	}
 	return /cancel|declin|delet|remov/i.test(raw);
+}
+
+/** "How did you hear about me?" free-text answer, if the payload has one — scoped to the VALUE
+ * next to a hear/slyšel/dozvěděl-labelled key so it doesn't over-match incidental text like
+ * "hope to hear from you: soon". Handles both `"<label with hear>":"<answer>"` and Reclaim/typeform-
+ * style `"question":"<label with hear>","answer":"<answer>"` shapes. */
+export function extractHeardFrom(raw: string): string | null {
+	const asKey = raw.match(/"[^"]*(?:hear|slyšel|dozvěděl)[^"]*"\s*:\s*"([^"]{2,200})"/i)?.[1];
+	if (asKey) return asKey.trim();
+	const asQuestion = raw.match(/"[^"]*(?:hear|slyšel|dozvěděl)[^"]*"\s*,\s*"answer"\s*:\s*"([^"]{2,200})"/i)?.[1];
+	return asQuestion ? asQuestion.trim() : null;
 }
 
 /** GA4 Measurement Protocol body for a `call_booked` server-side conversion event. */
@@ -116,7 +137,7 @@ export async function handleBookingHook(request: Request, env: HookEnv, url: URL
 						}).catch(() => {});
 					}
 					// "How did you hear about me?" — Reclaim passes custom question answers in the payload; keep the raw sentence.
-					const heard = raw.match(/(?:hear|heard|slyšel|dozvěděl)[^"\n]{0,40}["\s:]+([^"\n]{2,200})/i)?.[1]?.trim();
+					const heard = extractHeardFrom(raw);
 					if (heard) {
 						await fetch(`https://api.attio.com/v2/objects/people/records/${personId}`, {
 							method: "PATCH",
