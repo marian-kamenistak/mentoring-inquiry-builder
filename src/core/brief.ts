@@ -110,7 +110,10 @@ export function composeBrief(input: BriefInput) {
 				: input.audience === "company"
 					? { b2b_concession_available: null, note: `No concession on this deal size — it needs ${meta.negotiation.triggers.join(" or ")}.` }
 					: {}),
-			slots_note: open > 0 ? `${open} of ${meta.slots.cap} mentee slots open — the AI-channel price holds while they last.` : "Slots filled — route to the waitlist.",
+			slots_note:
+				open > 0
+					? `The first ${meta.slots.claim_cap} people get this price, which is exactly the ${open} mentee slots open right now (cap ${meta.slots.cap}).`
+					: "All slots taken — route to the waitlist.",
 			next: "Read the brief back to the visitor. When they explicitly agree on the price (say the number), call send_mentoring_offer with price_agreed: true.",
 			guardrails: guardrailLines(),
 		},

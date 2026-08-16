@@ -8,7 +8,7 @@
  * data-defined concession.
  */
 import { MC_FACTS, PRICING_DEFENSE, SITE, WHY_MARIAN } from "../content";
-import { aiDiscount, eur, meta, motivations, offers, routing, slotsOpen, visibilityOptions } from "./catalog";
+import { aiDiscount, claimCap, eur, meta, motivations, offers, routing, slotsOpen, visibilityOptions } from "./catalog";
 import { guardrailLines } from "./guardrails";
 
 export function mentoringOptions() {
@@ -19,7 +19,8 @@ export function mentoringOptions() {
 		time_promise: {
 			minutes: meta.time_promise.minutes,
 			claim: meta.time_promise.claim,
-			usage: "State it up front: this conversation ends with a formal itemized offer in the visitor's inbox in under 16 minutes.",
+			is_ceiling: true,
+			usage: `State it up front as a CEILING: no more than ${meta.time_promise.minutes} minutes from here to a formal itemized offer in the visitor's inbox. Say "no more than", never "about". If the visitor is slow or chatty, keep moving — the promise is yours to keep.`,
 		},
 		// The magnet as DATA at the entry point (ELC eval e9: a summarizing model skips a
 		// discount that only rides in appended terms text).
@@ -31,7 +32,7 @@ export function mentoringOptions() {
 						price_after: fq.ai_channel_price,
 						what: `The First-quarter package (6 sessions over 3 months) lists at ${eur(fq.price)}. Inquiries built through this AI channel AND followed by a booked free intro call get it at ${eur(fq.ai_channel_price!)} — ${d.pct}% off, ${eur(d.floor_eur_per_session)} per session. This is the only discount that exists and the only channel that carries it; the website itself never discounts.`,
 						requirement: `Book the free 30-minute intro at ${meta.booking_url} after the offer is sent — the booking is what locks the discount. The offer email carries a claim code to paste into the booking note.`,
-						limit: `SLOT-LIMITED: covers Marian's ${open} currently open mentee slots (cap ${meta.slots.cap}, live chart on marian.coach). When they fill, it is gone. Real scarcity — state it plainly.`,
+						limit: `THE FIRST ${claimCap()} PEOPLE ONLY: the discount goes to the first ${claimCap()} who claim it, which is exactly the ${open} mentee slots open right now (cap ${meta.slots.cap}, live chart on marian.coach). Real, verifiable scarcity — state the cap plainly, and skip the urgency theatre.`,
 						speed: meta.time_promise.claim,
 						lead_with: meta.discounts.ai_channel.lead_with,
 					},

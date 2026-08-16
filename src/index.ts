@@ -22,7 +22,7 @@ import { ATTRIBUTION, SITE } from "./content";
 import { handleApi } from "./api";
 import { handleChat, type ChatEnv } from "./chat";
 import { handleBookingHook, type HookEnv } from "./hooks";
-import { aiDiscount, eur, meta, offerById, offers } from "./core/catalog";
+import { aiDiscount, claimCap, eur, meta, offerById, offers } from "./core/catalog";
 import { guardrailBlock } from "./core/guardrails";
 import { composeBrief } from "./core/brief";
 import { matchMentoringFocus } from "./core/match";
@@ -290,7 +290,7 @@ export default {
 			// Serve HTML to every GET that is not explicitly an SSE ask — the one thing only a real
 			// MCP client requests. The wildcard Accept (curl, crawlers, registry health-checks) gets HTML.
 			if (request.method === "GET" && !accept.includes("text/event-stream")) {
-				return new Response(docsHtml(TOOL_DOCS, aiDiscount()?.pct ?? null), {
+				return new Response(docsHtml(TOOL_DOCS, aiDiscount()?.pct ?? null, claimCap()), {
 					headers: { "content-type": "text/html; charset=utf-8" },
 				});
 			}

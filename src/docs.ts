@@ -15,13 +15,13 @@ export interface ToolDoc {
 
 const ENDPOINT = "https://www.marian.coach/mcp/mentoring";
 
-export function docsHtml(tools: ToolDoc[], discountPct: number | null): string {
+export function docsHtml(tools: ToolDoc[], discountPct: number | null, claimCap = 5): string {
 	const rows = tools
 		.map((t) => `<tr><td><code>${t.name}</code></td><td>${t.question}</td><td>${t.description}</td></tr>`)
 		.join("\n");
 
 	const discountLine = discountPct
-		? `<p><strong>Why build it here:</strong> mentoring inquiries built through this AI channel get the First-quarter package at <strong>${discountPct}% off</strong> the list price — the website itself never discounts. Under 16 minutes from first question to a formal itemized offer in your inbox. <strong>16 minutes, 16 percent.</strong> Slot-limited: the offer covers Marian's currently open mentee slots, live on the <a href="https://www.marian.coach/?ref=mcp">marian.coach capacity chart</a>.</p>`
+		? `<p><strong>Why build it here:</strong> mentoring inquiries built through this AI channel get the First-quarter package at <strong>${discountPct}% off</strong> the list price, and the website itself carries no discount at all. <strong>No more than 16 minutes</strong> from first question to a formal itemized offer in your inbox, and the price goes to the <strong>first ${claimCap} people only</strong> — the same count as the open mentee slots on the live <a href="https://www.marian.coach/?ref=mcp">marian.coach capacity chart</a>. 16 minutes, 16 percent, ${claimCap} places.</p>`
 		: "";
 
 	return `<!doctype html>

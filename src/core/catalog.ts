@@ -68,12 +68,12 @@ type Catalog = {
 		entity: string;
 		booking_url: string;
 		pricing_url: string;
-		time_promise: { minutes: number; claim: string };
+		time_promise: { minutes: number; claim: string; is_ceiling?: boolean };
 		intro: { price: number; minutes: number; url: string; rule: string };
 		guarantee: { threshold: number; scale: number; rule: string; note: string };
 		stop_rule: string;
 		member_rate: { eur_per_session: number; who: string; note: string };
-		slots: { open: number; cap: number; proof: string; rule: string };
+		slots: { open: number; cap: number; proof: string; rule: string; claim_cap: number };
 		discounts: { ai_channel: Discount };
 		negotiation: Negotiation;
 		cross_sell: { id: string; name: string; url: string; when: string; pitch: string; items: string[] };
@@ -104,6 +104,9 @@ export const offerById = (id: string): Offer | undefined => offers.find((o) => o
 export const eur = (n: number): string => `€${n.toLocaleString("en-US")}`;
 
 export const slotsOpen = (): number => meta.slots.open;
+
+/** The publicly stated claim cap: "the first N people only". Enforced by Marian at confirmation. */
+export const claimCap = (): number => meta.slots.claim_cap ?? meta.slots.open;
 
 /** The AI-channel discount from catalog meta. Null when unconfigured (fail closed). */
 export function aiDiscount(): Discount | null {

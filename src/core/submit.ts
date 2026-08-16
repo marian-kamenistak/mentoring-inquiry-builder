@@ -427,7 +427,7 @@ function offerEmailHtml(args: {
 	const headlinePrice = discountPct
 		? `<p style="margin:0 0 2px;font-size:15px;color:#888;"><s>${eur(listPrice)}</s> <span style="color:${accent};font-weight:700;">−${discountPct}% AI channel</span></p>
      <p style="margin:0 0 6px;font-size:40px;line-height:1.05;font-weight:700;letter-spacing:-0.02em;color:#171717;">${eur(finalPrice)}<span style="font-size:14px;font-weight:500;color:#888;"> excl. VAT</span></p>
-     <p style="margin:0 0 24px;font-size:13px;color:#888;">The ${discountPct}% holds once your free intro call is booked${open > 0 ? ` — ${open} of ${meta.slots.cap} mentee slots open right now` : ""}.</p>`
+     <p style="margin:0 0 24px;font-size:13px;color:#888;">The ${discountPct}% holds once your free intro call is booked. This price goes to the first ${meta.slots.claim_cap} people${open > 0 ? `, and ${open} of those places are still open` : ""}.</p>`
 		: `<p style="margin:0 0 24px;font-size:40px;line-height:1.05;font-weight:700;letter-spacing:-0.02em;color:#171717;">${eur(finalPrice)}<span style="font-size:14px;font-weight:500;color:#888;"> excl. VAT</span></p>`;
 
 	const programHtml = program
