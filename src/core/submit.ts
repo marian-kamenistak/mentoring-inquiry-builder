@@ -78,7 +78,7 @@ export type SubmitResult =
 	  }
 	| { ok: false; error: string };
 
-function splitName(full: string): { first: string; last: string } {
+export function splitName(full: string): { first: string; last: string } {
 	const clean = full.trim().replace(/\s+/g, " ");
 	const parts = clean.split(" ");
 	return { first: parts[0] ?? "", last: parts.length > 1 ? parts.slice(1).join(" ") : "" };

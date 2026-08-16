@@ -9,7 +9,17 @@
  * On hit: find the person's entry in the Mentoring AI Inquiries list → PATCH
  * status "Intro booked" + intro_booked_at → Slack "🔒 discount locked". All
  * best-effort; the claim-code-in-booking-note manual flow stays the audit trail.
+ *
+ * Two kinds of booker, both handled:
+ *   warm — came through the wizard, already a Person with an inquiry entry. Their
+ *          entry flips to "Intro booked" and the pipeline advances to "Intro call".
+ *   cold — clicked an ad, landed, booked the intro, never touched the wizard. They
+ *          are not a Person yet, so one is created (assert on email) before the
+ *          pipeline row and the GA4 `call_booked` conversion. Without that the
+ *          whole paid funnel's only real outcome went unrecorded.
  */
+
+import { splitName } from "./core/submit";
 
 const INQUIRIES_LIST_SLUG = "mentoring_ai_inquiries";
 const PIPELINE_LIST_SLUG = "mentoring_pipeline";
@@ -106,6 +116,7 @@ export async function handleBookingHook(request: Request, env: HookEnv, url: URL
 	if (!email && !claimFromNote) return json({ ok: false, error: "need_email_or_claim_code" }, 400);
 
 	let locked = false;
+	let createdPerson = false;
 	let matchedName = body.name ?? email;
 
 	if (env.ATTIO_TOKEN) {
@@ -121,7 +132,42 @@ export async function handleBookingHook(request: Request, env: HookEnv, url: URL
 					body: JSON.stringify({ filter: { email_addresses: email }, limit: 1 }),
 				});
 				const personData: any = personRes.ok ? await personRes.json().catch(() => ({ data: [] })) : { data: [] };
-				const personId: string | undefined = personData?.data?.[0]?.id?.record_id;
+				let personId: string | undefined = personData?.data?.[0]?.id?.record_id;
+				let personValues: any = personData?.data?.[0]?.values ?? {};
+
+				// COLD BOOKER (fix 2026-08-16). Someone who clicks an ad, lands, and books the intro
+				// without ever touching the wizard or a form is not an Attio Person yet. Until this
+				// block existed the lookup simply missed and everything below no-opped in silence:
+				// no `mentoring_pipeline` row, so the intro never entered the funnel, and no GA4
+				// `call_booked` — which is the PRIMARY Google Ads conversion (361 EUR in
+				// google-ads-setup.md). Booking-direct is the most common path for paid traffic, so
+				// that was the campaign quietly under-reporting its only real outcome.
+				// Assert (PUT + matching_attribute) rather than POST: race-safe if two hooks land at
+				// once, and it returns the existing record instead of a duplicate.
+				if (!personId) {
+					const { first, last } = splitName(body.name ?? "");
+					const created = await fetch("https://api.attio.com/v2/objects/people/records?matching_attribute=email_addresses", {
+						method: "PUT",
+						headers,
+						body: JSON.stringify({
+							data: {
+								values: {
+									email_addresses: [email],
+									...(first ? { name: [{ first_name: first, last_name: last, full_name: (body.name ?? "").trim() }] } : {}),
+								},
+							},
+						}),
+					});
+					if (created.ok) {
+						const rec: any = await created.json().catch(() => null);
+						personId = rec?.data?.id?.record_id;
+						personValues = rec?.data?.values ?? {};
+						createdPerson = Boolean(personId);
+					} else {
+						console.error("booking-hook attio person create failed", created.status, await created.text().catch(() => ""));
+					}
+				}
+
 				if (personId) {
 					const entriesRes = await fetch(`https://api.attio.com/v2/objects/people/records/${personId}/entries?limit=100`, {
 						headers: { Authorization: `Bearer ${env.ATTIO_TOKEN}` },
@@ -129,8 +175,7 @@ export async function handleBookingHook(request: Request, env: HookEnv, url: URL
 					const entriesData: any = entriesRes.ok ? await entriesRes.json().catch(() => ({ data: [] })) : { data: [] };
 					entryId = (entriesData.data ?? []).find((e: any) => e.list_api_slug === INQUIRIES_LIST_SLUG)?.entry_id;
 
-					const pv: any = personData.data[0].values ?? {};
-					const val = (k: string) => pv?.[k]?.[0]?.value ?? "";
+					const val = (k: string) => personValues?.[k]?.[0]?.value ?? "";
 					// Funnel: Lead → Intro call. Only an actual transition counts — see shouldFireCallBooked.
 					const pipe = (entriesData.data ?? []).find((e: any) => e.list_api_slug === PIPELINE_LIST_SLUG);
 					let pipeEntry: any = pipe;
@@ -217,11 +262,17 @@ export async function handleBookingHook(request: Request, env: HookEnv, url: URL
 			method: "POST",
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({
-				text: `:lock: Intro booked — *${matchedName}*${claimFromNote ? ` · claim ${claimFromNote}` : ""}${locked ? " · Attio entry flipped to Intro booked" : " · no matching Attio entry found (check manually)"}`,
+				text: `:lock: Intro booked — *${matchedName}*${claimFromNote ? ` · claim ${claimFromNote}` : ""}${
+					locked
+						? " · Attio entry flipped to Intro booked"
+						: createdPerson
+							? " · new Person created and added to the pipeline as Intro call (booked direct, no wizard inquiry)"
+							: " · no matching Attio entry found (check manually)"
+				}`,
 				unfurl_links: false,
 			}),
 		}).catch((e) => console.error("booking-hook slack exception", String(e)));
 	}
 
-	return json({ ok: true, locked, claim: claimFromNote });
+	return json({ ok: true, locked, created_person: createdPerson, claim: claimFromNote });
 }
