@@ -14,7 +14,7 @@
  * /mcp/mentoring/api/verify without any datastore — the Attio entry is primary evidence,
  * the HMAC is the independent audit trail.
  */
-import { type Attribution, firstTouchValues, laneFromCampaign } from "./attribution";
+import { type Attribution, firstTouchValues, refreshableValues, laneFromCampaign } from "./attribution";
 import {
 	aiDiscount,
 	clampConcession,
@@ -33,6 +33,7 @@ import {
 import { buildProgram, renderProgram, type Program } from "./program";
 
 const INQUIRIES_LIST_SLUG = "mentoring_ai_inquiries";
+const PIPELINE_LIST_SLUG = "mentoring_pipeline";
 const ATTIO_LIST_URL = "https://app.attio.com/marian/list/mentoring_ai_inquiries";
 
 export type SubmitEnv = {
@@ -220,13 +221,18 @@ export async function submitInquiry(env: SubmitEnv, input: SubmitInput): Promise
 						const personId: string | undefined = personRec?.data?.id?.record_id;
 						if (!personId) return null;
 
-						// First-touch attribution from the mc_attr cookie (chat channel only — MCP clients have no cookie).
+						// Attribution from the mc_attr cookie (chat channel only — MCP clients have no cookie).
+						// First touch is written once; click ids, the GA client id and last touch describe THIS
+						// conversion and are refreshed every time.
 						const hasFirst = Array.isArray(personRec?.data?.values?.first_touch_source) && personRec.data.values.first_touch_source.length > 0;
-						if (input.attribution && !hasFirst) {
+						const attrValues = input.attribution
+							? { ...(hasFirst ? {} : firstTouchValues(input.attribution)), ...refreshableValues(input.attribution) }
+							: {};
+						if (Object.keys(attrValues).length) {
 							await fetch(`https://api.attio.com/v2/objects/people/records/${personId}`, {
 								method: "PATCH", headers,
-								body: JSON.stringify({ data: { values: firstTouchValues(input.attribution) } }),
-							}).catch((e) => console.error("attio first-touch exception", String(e)));
+								body: JSON.stringify({ data: { values: attrValues } }),
+							}).catch((e) => console.error("attio attribution patch exception", String(e)));
 						}
 
 						// B2B: company find-or-create + record-reference link (never a string — 400s).
@@ -312,11 +318,12 @@ export async function submitInquiry(env: SubmitEnv, input: SubmitInput): Promise
 						const cmp = input.attribution?.last.cmp ?? input.attribution?.first.cmp;
 						const lane = laneFromCampaign(cmp);
 						const pipeVals: Record<string, unknown> = { sku: offer.id, value_eur: finalPrice, ...(cmp ? { campaign: cmp } : {}), ...(lane ? { lane } : {}) };
-						const pipe = (entriesData.data ?? []).find((e: any) => e.list_api_slug === "mentoring_pipeline");
+						const pipe = (entriesData.data ?? []).find((e: any) => e.list_api_slug === PIPELINE_LIST_SLUG);
 						if (pipe) {
-							await fetch(`https://api.attio.com/v2/lists/mentoring_pipeline/entries/${pipe.entry_id}`, { method: "PATCH", headers, body: JSON.stringify({ data: { entry_values: pipeVals } }) }).catch(() => {});
+							await fetch(`https://api.attio.com/v2/lists/${PIPELINE_LIST_SLUG}/entries/${pipe.entry_id}`, { method: "PATCH", headers, body: JSON.stringify({ data: { entry_values: pipeVals } }) })
+								.catch((e) => console.error("attio pipeline update exception", String(e)));
 						} else {
-							await fetch("https://api.attio.com/v2/lists/mentoring_pipeline/entries", {
+							await fetch(`https://api.attio.com/v2/lists/${PIPELINE_LIST_SLUG}/entries`, {
 								method: "POST",
 								headers,
 								body: JSON.stringify({ data: { parent_record_id: personId, parent_object: "people", entry_values: { stage: "Lead", added_via: "AI wizard", source: channel, ...pipeVals } } }),

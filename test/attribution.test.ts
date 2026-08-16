@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseAttributionCookie, firstTouchValues, isMenteeLeadSource, laneFromCampaign, ATTR_COOKIE } from "../src/core/attribution";
+import { parseAttributionCookie, firstTouchValues, refreshableValues, isMenteeLeadSource, laneFromCampaign, ATTR_COOKIE } from "../src/core/attribution";
 
 const sample = {
 	v: 1,
@@ -27,14 +27,41 @@ describe("parseAttributionCookie", () => {
 });
 
 describe("firstTouchValues", () => {
-	it("maps first touch to Attio slugs and carries click ids from first OR last", () => {
+	it("maps first touch to Attio slugs and nothing else", () => {
 		const v = firstTouchValues(parseAttributionCookie(header)!);
 		expect(v).toMatchObject({
 			first_touch_source: "linkedin", first_touch_medium: "paid-social", first_touch_campaign: "paid-a-cto",
 			first_touch_url: sample.first.url, first_touch_referrer: "linkedin.com", first_touch_at: sample.first.at,
+		});
+		// Click ids, ga_client_id and last touch are refreshable — they must NOT ride in the
+		// write-once block, or a second visit would never update them.
+		for (const k of ["gclid", "li_fat_id", "fbclid", "ga_client_id", "last_touch_source", "last_touch_at"]) {
+			expect(Object.keys(v)).not.toContain(k);
+		}
+	});
+});
+
+describe("refreshableValues", () => {
+	it("carries click ids (last wins), ga client id and last touch", () => {
+		const v = refreshableValues(parseAttributionCookie(header)!);
+		expect(v).toMatchObject({
 			li_fat_id: "abc", gclid: "xyz", ga_client_id: "123.456",
+			last_touch_source: "google", last_touch_medium: "cpc", last_touch_campaign: "paid-c-em",
+			last_touch_at: sample.last.at,
 		});
 		expect(Object.keys(v)).not.toContain("fbclid");
+		expect(Object.keys(v)).not.toContain("first_touch_source");
+	});
+	it("last click id wins over the first for the same platform", () => {
+		const both = {
+			...sample,
+			first: { ...sample.first, gclid: "first-click" },
+			last: { ...sample.last, gclid: "last-click" },
+		};
+		const v = refreshableValues(parseAttributionCookie(`${ATTR_COOKIE}=${encodeURIComponent(JSON.stringify(both))}`)!);
+		expect(v.gclid).toBe("last-click");
+		// and a click id present only on the first touch still survives
+		expect(v.li_fat_id).toBe("abc");
 	});
 });
 

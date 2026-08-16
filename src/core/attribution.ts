@@ -23,6 +23,8 @@ export function parseAttributionCookie(cookieHeader: string | null): Attribution
 
 const CLICK_IDS = ["gclid", "gbraid", "wbraid", "fbclid", "li_fat_id", "msclkid"] as const;
 
+// Write-once block: whatever brought the person here the FIRST time. Never overwritten on a
+// later visit, so the callers guard it with `hasFirst`.
 export function firstTouchValues(a: Attribution): Record<string, string> {
 	const f = a.first;
 	const out: Record<string, string> = {};
@@ -30,10 +32,21 @@ export function firstTouchValues(a: Attribution): Record<string, string> {
 	put("first_touch_source", f.src); put("first_touch_medium", f.med); put("first_touch_campaign", f.cmp);
 	put("first_touch_content", f.cnt); put("first_touch_url", f.url); put("first_touch_referrer", f.ref);
 	put("first_touch_at", f.at);
+	return out;
+}
+
+// Refreshed on EVERY submission, first touch or not: the click IDs an offline conversion upload
+// needs, the GA4 client id, and the last touch that actually preceded this conversion.
+export function refreshableValues(a: Attribution): Record<string, string> {
+	const l = a.last;
+	const out: Record<string, string> = {};
+	const put = (k: string, v?: string) => { if (v) out[k] = String(v).slice(0, 500); };
 	// Click IDs: the most recent one wins per platform — an offline conversion needs the click that
 	// preceded the conversion, which is usually the last, not the first.
 	for (const k of CLICK_IDS) put(k, (a.last as any)[k] ?? (a.first as any)[k]);
 	put("ga_client_id", a.ga_cid);
+	put("last_touch_source", l.src); put("last_touch_medium", l.med);
+	put("last_touch_campaign", l.cmp); put("last_touch_at", l.at);
 	return out;
 }
 

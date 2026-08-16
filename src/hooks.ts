@@ -12,6 +12,7 @@
  */
 
 const INQUIRIES_LIST_SLUG = "mentoring_ai_inquiries";
+const PIPELINE_LIST_SLUG = "mentoring_pipeline";
 
 export type HookEnv = {
 	BOOKING_HOOK_SECRET?: string;
@@ -48,6 +49,17 @@ export function extractHeardFrom(raw: string): string | null {
 	if (asKey) return asKey.trim();
 	const asQuestion = raw.match(/"[^"]*(?:hear|slyšel|dozvěděl)[^"]*"\s*,\s*"answer"\s*:\s*"([^"]{2,200})"/i)?.[1];
 	return asQuestion ? asQuestion.trim() : null;
+}
+
+/** `call_booked` is a conversion, so it may only fire on the actual transition INTO `Intro call`.
+ * A re-sent or duplicated booking webhook (Reclaim retries, a Zapier replay, a reschedule) hits
+ * this endpoint again with the person already parked on `Intro call` — counting that as a second
+ * conversion would inflate every ad platform's ROAS. Pass the person's `mentoring_pipeline` entry
+ * (or null/undefined when they have none yet). */
+export function shouldFireCallBooked(pipeEntry: any): boolean {
+	if (!pipeEntry) return true;
+	const stage = pipeEntry?.entry_values?.stage?.[0]?.option?.title;
+	return stage !== "Intro call";
 }
 
 /** GA4 Measurement Protocol body for a `call_booked` server-side conversion event. */
@@ -119,22 +131,37 @@ export async function handleBookingHook(request: Request, env: HookEnv, url: URL
 
 					const pv: any = personData.data[0].values ?? {};
 					const val = (k: string) => pv?.[k]?.[0]?.value ?? "";
-					// Funnel: Lead → Intro call.
-					const pipe = (entriesData.data ?? []).find((e: any) => e.list_api_slug === "mentoring_pipeline");
+					// Funnel: Lead → Intro call. Only an actual transition counts — see shouldFireCallBooked.
+					const pipe = (entriesData.data ?? []).find((e: any) => e.list_api_slug === PIPELINE_LIST_SLUG);
+					let pipeEntry: any = pipe;
+					if (pipe && !pipe.entry_values) {
+						// The memberships payload doesn't always carry entry_values; one GET reads the stage.
+						const pipeRes = await fetch(`https://api.attio.com/v2/lists/${PIPELINE_LIST_SLUG}/entries/${pipe.entry_id}`, {
+							headers: { Authorization: `Bearer ${env.ATTIO_TOKEN}` },
+						});
+						if (pipeRes.ok) {
+							const pipeData: any = await pipeRes.json().catch(() => null);
+							if (pipeData?.data) pipeEntry = pipeData.data;
+						}
+					}
+					const isTransition = shouldFireCallBooked(pipe ? pipeEntry : null);
 					if (pipe) {
-						await fetch(`https://api.attio.com/v2/lists/mentoring_pipeline/entries/${pipe.entry_id}`, {
-							method: "PATCH",
-							headers,
-							body: JSON.stringify({ data: { entry_values: { stage: "Intro call" } } }),
-						}).catch(() => {});
+						// Already on Intro call → the PATCH would be a no-op write. Skip it.
+						if (isTransition) {
+							await fetch(`https://api.attio.com/v2/lists/${PIPELINE_LIST_SLUG}/entries/${pipe.entry_id}`, {
+								method: "PATCH",
+								headers,
+								body: JSON.stringify({ data: { entry_values: { stage: "Intro call" } } }),
+							}).catch((e) => console.error("attio pipeline stage exception", String(e)));
+						}
 					} else {
-						await fetch("https://api.attio.com/v2/lists/mentoring_pipeline/entries", {
+						await fetch(`https://api.attio.com/v2/lists/${PIPELINE_LIST_SLUG}/entries`, {
 							method: "POST",
 							headers,
 							body: JSON.stringify({
 								data: { parent_record_id: personId, parent_object: "people", entry_values: { stage: "Intro call", added_via: "Manual", source: "booking" } },
 							}),
-						}).catch(() => {});
+						}).catch((e) => console.error("attio pipeline create exception", String(e)));
 					}
 					// "How did you hear about me?" — Reclaim passes custom question answers in the payload; keep the raw sentence.
 					const heard = extractHeardFrom(raw);
@@ -146,7 +173,8 @@ export async function handleBookingHook(request: Request, env: HookEnv, url: URL
 						}).catch(() => {});
 					}
 					// GA4 server-side conversion. Joins the browser session via ga_client_id when we have it.
-					if (env.GA4_MEASUREMENT_ID && env.GA4_API_SECRET) {
+					// Transition-only: a repeat webhook for someone already on Intro call fires nothing.
+					if (isTransition && env.GA4_MEASUREMENT_ID && env.GA4_API_SECRET) {
 						const cid = val("ga_client_id") || `server.${[...email].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7)}`;
 						await fetch(`https://www.google-analytics.com/mp/collect?measurement_id=${env.GA4_MEASUREMENT_ID}&api_secret=${env.GA4_API_SECRET}`, {
 							method: "POST",

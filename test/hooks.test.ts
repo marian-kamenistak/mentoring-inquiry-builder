@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { isCancellationPayload, ga4CallBookedBody, extractHeardFrom } from "../src/hooks";
+import { isCancellationPayload, ga4CallBookedBody, extractHeardFrom, shouldFireCallBooked } from "../src/hooks";
+
+// Shape of a real Attio list-entry read: entry_values.<slug>[0].option.title for a select.
+const entryAtStage = (title: string) => ({
+	entry_id: "e1",
+	list_api_slug: "mentoring_pipeline",
+	entry_values: { stage: [{ option: { title } }] },
+});
 
 describe("booking-hook helpers", () => {
 	it("detects cancellations without flipping bookings", () => {
@@ -22,5 +29,13 @@ describe("booking-hook helpers", () => {
 		expect(extractHeardFrom('{"How did you hear about me?":"LinkedIn ad"}')).toBe("LinkedIn ad");
 		expect(extractHeardFrom('{"answers":[{"question":"Kde jste se o mně dozvěděl?","answer":"od kolegy"}]}')).toBe("od kolegy");
 		expect(extractHeardFrom('{"note":"hope to hear from you: soon"}')).toBeNull();
+	});
+	it("fires call_booked only on the transition into Intro call", () => {
+		expect(shouldFireCallBooked(null)).toBe(true);
+		expect(shouldFireCallBooked(undefined)).toBe(true);
+		expect(shouldFireCallBooked(entryAtStage("Lead"))).toBe(true);
+		expect(shouldFireCallBooked(entryAtStage("Intro call"))).toBe(false);
+		// Unknown shape (entry_values missing) fails open — better a duplicate than a lost conversion.
+		expect(shouldFireCallBooked({ entry_id: "e1" })).toBe(true);
 	});
 });
