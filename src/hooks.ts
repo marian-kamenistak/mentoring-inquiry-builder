@@ -17,10 +17,26 @@ export type HookEnv = {
 	BOOKING_HOOK_SECRET?: string;
 	ATTIO_TOKEN?: string;
 	SLACK_WEBHOOK_URL?: string;
+	GA4_MEASUREMENT_ID?: string;
+	GA4_API_SECRET?: string;
 };
 
 const json = (data: unknown, status = 200): Response =>
 	new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json; charset=utf-8" } });
+
+/** True for cancellation/decline/removal payloads — never advance the pipeline on these. */
+export function isCancellationPayload(raw: string): boolean {
+	return /cancel|declin|delet|remov/i.test(raw);
+}
+
+/** GA4 Measurement Protocol body for a `call_booked` server-side conversion event. */
+export function ga4CallBookedBody(clientId: string, params: Record<string, string | number>) {
+	return {
+		client_id: clientId,
+		non_personalized_ads: false,
+		events: [{ name: "call_booked", params: { ...params, engagement_time_msec: 1 } }],
+	};
+}
 
 /** Marian's own addresses — never treat them as the visitor when scanning a booking payload. */
 const OWN_EMAILS = new Set(["marian@marian.coach", "marian@kamenistak.com", "marian@engineeringleaders.io", "leads@marian.coach"]);
@@ -41,6 +57,10 @@ export async function handleBookingHook(request: Request, env: HookEnv, url: URL
 	// (Zapier/manual), or the body field.
 	const provided = url.searchParams.get("secret") ?? request.headers.get("x-hook-secret") ?? body.secret ?? "";
 	if (provided !== env.BOOKING_HOOK_SECRET) return json({ ok: false, error: "forbidden" }, 403);
+
+	// Cancellations/declines must never advance the pipeline or fire a conversion — bail before
+	// any Attio or GA4 work starts.
+	if (isCancellationPayload(raw)) return json({ ok: true, ignored: "cancellation" });
 
 	// Tolerant extraction: explicit fields first, then a raw-text scan over whatever payload
 	// the trigger sent (Reclaim event JSON, Zapier mapping, manual curl).
@@ -75,6 +95,45 @@ export async function handleBookingHook(request: Request, env: HookEnv, url: URL
 					});
 					const entriesData: any = entriesRes.ok ? await entriesRes.json().catch(() => ({ data: [] })) : { data: [] };
 					entryId = (entriesData.data ?? []).find((e: any) => e.list_api_slug === INQUIRIES_LIST_SLUG)?.entry_id;
+
+					const pv: any = personData.data[0].values ?? {};
+					const val = (k: string) => pv?.[k]?.[0]?.value ?? "";
+					// Funnel: Lead → Intro call.
+					const pipe = (entriesData.data ?? []).find((e: any) => e.list_api_slug === "mentoring_pipeline");
+					if (pipe) {
+						await fetch(`https://api.attio.com/v2/lists/mentoring_pipeline/entries/${pipe.entry_id}`, {
+							method: "PATCH",
+							headers,
+							body: JSON.stringify({ data: { entry_values: { stage: "Intro call" } } }),
+						}).catch(() => {});
+					} else {
+						await fetch("https://api.attio.com/v2/lists/mentoring_pipeline/entries", {
+							method: "POST",
+							headers,
+							body: JSON.stringify({
+								data: { parent_record_id: personId, parent_object: "people", entry_values: { stage: "Intro call", added_via: "Manual", source: "booking" } },
+							}),
+						}).catch(() => {});
+					}
+					// "How did you hear about me?" — Reclaim passes custom question answers in the payload; keep the raw sentence.
+					const heard = raw.match(/(?:hear|heard|slyšel|dozvěděl)[^"\n]{0,40}["\s:]+([^"\n]{2,200})/i)?.[1]?.trim();
+					if (heard) {
+						await fetch(`https://api.attio.com/v2/objects/people/records/${personId}`, {
+							method: "PATCH",
+							headers,
+							body: JSON.stringify({ data: { values: { heard_from: heard } } }),
+						}).catch(() => {});
+					}
+					// GA4 server-side conversion. Joins the browser session via ga_client_id when we have it.
+					if (env.GA4_MEASUREMENT_ID && env.GA4_API_SECRET) {
+						const cid = val("ga_client_id") || `server.${[...email].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7)}`;
+						await fetch(`https://www.google-analytics.com/mp/collect?measurement_id=${env.GA4_MEASUREMENT_ID}&api_secret=${env.GA4_API_SECRET}`, {
+							method: "POST",
+							body: JSON.stringify(
+								ga4CallBookedBody(cid, { source: val("first_touch_source") || "direct", campaign: val("first_touch_campaign") || "", gclid: val("gclid") || "" })
+							),
+						}).catch((e) => console.error("ga4 mp exception", String(e)));
+					}
 				}
 			}
 
