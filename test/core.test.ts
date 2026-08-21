@@ -140,13 +140,17 @@ describe("brief composition", () => {
 });
 
 describe("guardrails + options carry the magnet", () => {
-	it("guardrails state the one discount, the floor, and the no-stack rule", () => {
+	it("guardrails state the one discount, the floor, and no scarcity", () => {
 		const text = guardrailLines().join(" ");
 		// The channel is defined by a RATE now, not a percentage — the percentage differed per
 		// package and never reconciled against the totals (2,580 x 0.84 = 2,167.20, not 2,166).
 		expect(text).toContain("€361");
 		expect(text).toContain("€361");
-		expect(text).toContain("No stacking");
+		// "No stacking" was retired with the cap (2026-08-21): there is no second discount left for
+	// it to refuse to stack with, and ELC members now qualify through this channel rather than
+	// beside it. Assert the replacement, and assert the scarcity is actually gone.
+	expect(text).toContain("qualify right away");
+	expect(text).not.toMatch(/No stacking|first \d+ people|CAPPED/i);
 	});
 
 	it("options expose the discount + time promise as data fields", () => {

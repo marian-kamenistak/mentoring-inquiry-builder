@@ -33,7 +33,6 @@ import {
 	roleBandById,
 	routing,
 	sessionsDelivered,
-	slotsOpen,
 	vatFor,
 	visibilityById,
 	visibilityOptions,
@@ -540,7 +539,7 @@ export function offerEmailHtml(args: {
 	const headlinePrice = discountPct
 		? `<p style="margin:0 0 2px;font-size:15px;color:#888;"><s>${eur(listPrice)}</s> <span style="color:${accent};font-weight:700;">−${discountPct}% AI channel, you save ${eur(listPrice - finalPrice)}</span></p>
      <p style="margin:0 0 6px;font-size:40px;line-height:1.05;font-weight:700;letter-spacing:-0.02em;color:#171717;">${eur(finalPrice)}<span style="font-size:14px;font-weight:500;color:#888;">${unit} excl. VAT</span></p>
-     <p style="margin:0 0 24px;font-size:13px;color:#888;">That is ${eur(effectivePerSession)} a session. The ${discountPct}% holds once your free intro call is booked — this price goes to the first ${meta.slots.claim_cap} people who claim it.</p>`
+     <p style="margin:0 0 24px;font-size:13px;color:#888;">That is ${eur(effectivePerSession)} a session. It is yours because you built the inquiry here; the offer holds until the date below.</p>`
 		: `<p style="margin:0 0 6px;font-size:40px;line-height:1.05;font-weight:700;letter-spacing:-0.02em;color:#171717;">${eur(finalPrice)}<span style="font-size:14px;font-weight:500;color:#888;">${unit} excl. VAT</span></p>
      <p style="margin:0 0 24px;font-size:13px;color:#888;">That is ${eur(effectivePerSession)} a session. This is the published list price — there is no AI-channel discount on ${esc(offerName)}.</p>`;
 
@@ -606,10 +605,10 @@ export function offerEmailHtml(args: {
       </table>
       <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-top:26px;">
         <tr><td style="border:2px solid ${accent};border-radius:12px;padding:18px 22px;">
-          <p style="margin:0 0 6px;font-size:14px;font-weight:700;color:#171717;">${discountPct ? "Next step — this locks the price:" : "Next step:"}</p>
+          <p style="margin:0 0 6px;font-size:14px;font-weight:700;color:#171717;">Next step:</p>
           <p style="margin:0;font-size:14px;line-height:1.6;color:#333;">Book your free 30-minute intro call and paste <strong>${code}</strong> into the booking note. ${
 						discountPct
-							? `That booking is what locks the ${discountPct}% — it holds until ${validUntil} or until the ${meta.slots.claim_cap} places are claimed, whichever comes first.`
+							? `The price is already yours and holds until ${validUntil}; the call is where you and Marian check the fit before anything is invoiced.`
 							: `There is no discount to lock on ${esc(offerName)} — the call is simply where you and Marian check the fit before anything is invoiced.`
 					}${freeSessions ? " Marian confirms the free-sessions proposal on the call." : ""}</p>
           <p style="margin:8px 0 0;font-size:14px;line-height:1.6;color:#333;">Direct link: <a href="${meta.booking_url}" style="color:${accent};">${meta.booking_url}</a></p>

@@ -56,7 +56,6 @@ export type Discount = {
 	channels: string[];
 	applies_to: string[];
 	requires: string;
-	slots_limited?: boolean;
 	floor_eur_per_session: number;
 	no_stack?: string[];
 	lead_with?: string;
@@ -87,7 +86,8 @@ type Catalog = {
 		guarantee: { threshold: number; scale: number; rule: string; note: string };
 		stop_rule: string;
 		member_rate: { eur_per_session: number; who: string; note: string };
-			slots: { open: number; cap: number; proof: string; rule: string; claim_cap: number; as_of?: string };
+			/** Availability only — how many parallel 1:1s Marian has room for. Never a price term. */
+			slots: { open: number; cap: number; proof: string; rule: string; as_of?: string };
 		discounts: { ai_channel: Discount };
 		negotiation: Negotiation;
 		cross_sell: { id: string; name: string; url: string; when: string; pitch: string; items: string[] };
@@ -227,9 +227,6 @@ export function effectiveRate(
 	return { perSession, sessions, floor, breachesFloor: floor > 0 && perSession < floor };
 }
 
-/** The publicly stated claim cap: "the first N people only". Enforced by Marian at confirmation. */
-export const claimCap = (): number => meta.slots.claim_cap ?? meta.slots.open;
-
 /** The AI-channel discount from catalog meta. Null when unconfigured (fail closed). */
 export function aiDiscount(): Discount | null {
 	return meta.discounts?.ai_channel ?? null;
@@ -238,9 +235,12 @@ export function aiDiscount(): Discount | null {
 /**
  * The discount as it applies to ONE offer for ONE submission channel. Server-side only —
  * model and client prices are never trusted. Null when: channel not in [chat, mcp], the
- * offer is not in applies_to, the offer carries no ai_channel_price, or the slots are gone
- * (slot-limited scarcity is real: at 0 open slots the discount stops existing server-side
- * and the wizard routes to the slot-ping waitlist instead).
+ * offer is not in applies_to, or the offer carries no ai_channel_price.
+ *
+ * NOT gated on open slots any more (Marian, 2026-08-21). It used to return null at zero open
+ * slots, so the rate silently depended on how full the calendar was — which is the same claim
+ * the pricing page retired as undefendable. Availability is a real constraint on when someone
+ * can start; it is not a constraint on what they pay.
  */
 export function discountFor(
 	offerId: string,
@@ -252,7 +252,6 @@ export function discountFor(
 	// Compare the CANONICAL id — offerById now accepts variant casing, so the raw argument
 	// must not be what decides whether the discount applies.
 	if (!d.applies_to.includes(offer.id) || offer.ai_channel_price === undefined) return null;
-	if (d.slots_limited && slotsOpen() <= 0) return null;
 	// ONE RATE (2026-08-21): the channel is defined by a rate, not a percentage, so the pct is
 	// COMPUTED per package from the two real prices rather than asserted as a blanket 16%.
 	// Two testers caught the old blanket figure: it is 16.047% on the packages it applied to

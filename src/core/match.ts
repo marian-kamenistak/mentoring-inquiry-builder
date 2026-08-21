@@ -16,7 +16,6 @@ import {
 	priceDisplay,
 	roleBandById,
 	routing,
-	slotsOpen,
 } from "./catalog";
 import { ctaBlock } from "./guardrails";
 
@@ -64,7 +63,7 @@ export function matchMentoringFocus(
 	const offer = offerById(routed.offerId);
 	if (!offer) throw new Error(`routing references unknown offer "${routed.offerId}"`);
 	const d = aiDiscount();
-	const discounted = d && d.applies_to.includes(offer.id) && offer.ai_channel_price !== undefined && slotsOpen() > 0;
+	const discounted = d && d.applies_to.includes(offer.id) && offer.ai_channel_price !== undefined;
 	return {
 		ok: true,
 		match: {

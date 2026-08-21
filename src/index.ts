@@ -22,7 +22,7 @@ import { ATTRIBUTION, SITE } from "./content";
 import { handleApi } from "./api";
 import { handleChat, type ChatEnv } from "./chat";
 import { handleBookingHook, type HookEnv } from "./hooks";
-import { aiDiscount, claimCap, eur, meta, offerById, offers } from "./core/catalog";
+import { aiDiscount, eur, meta, offerById, offers } from "./core/catalog";
 import { ctaBlock, guardrailBlock } from "./core/guardrails";
 import { composeBrief } from "./core/brief";
 import { matchMentoringFocus } from "./core/match";
@@ -365,7 +365,7 @@ export default {
 			// that exists precisely to avoid submitting dead URLs — saw this page as a 404 and would
 			// skip it. Same headers, no body, which is what HEAD means.
 			if ((request.method === "GET" || request.method === "HEAD") && !accept.includes("text/event-stream")) {
-				const html = docsHtml(TOOL_DOCS, aiDiscount()?.pct ?? null, claimCap());
+				const html = docsHtml(TOOL_DOCS, aiDiscount()?.pct ?? null);
 				return new Response(request.method === "HEAD" ? null : html, {
 					headers: { "content-type": "text/html; charset=utf-8" },
 				});

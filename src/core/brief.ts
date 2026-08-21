@@ -22,7 +22,6 @@ import {
 	roleBandById,
 	routing,
 	sessionsDelivered,
-	slotsOpen,
 	vatFor,
 	unitSuffix,
 	visibilityById,
@@ -97,9 +96,8 @@ export function composeBrief(input: BriefInput) {
 	if (errors.length) return { ok: false as const, error: errors.join("; "), cta: ctaBlock(offer?.id) };
 
 	const d = aiDiscount();
-	const open = slotsOpen();
 	const leaders = input.audience === "company" ? Math.max(1, input.leaders_count ?? 1) : 1;
-	const discounted = d && offer!.ai_channel_price !== undefined && open > 0;
+	const discounted = d && offer!.ai_channel_price !== undefined;
 	const negotiation = negotiationFor(input.audience, leaders, offer!.id);
 
 	// Leader arithmetic is now DATA (offer.per_leader), not `offer.id === "first-quarter"`.
@@ -203,10 +201,6 @@ export function composeBrief(input: BriefInput) {
 				sessions_counted: rate.sessions,
 				status: rate.breachesFloor ? "BELOW_FLOOR" : "at_or_above_floor",
 			},
-			slots_note:
-				open > 0
-					? `Stated once, then dropped: the price goes to the first ${meta.slots.claim_cap} people who claim it — the count of mentee slots open as of ${meta.slots.as_of ?? "the last catalog update"} (cap ${meta.slots.cap}). It is not a live counter; do not say "right now" and do not repeat it.`
-					: "All slots taken — route to the waitlist, not to a purchase.",
 			next: "Read the brief back to the visitor. When they explicitly agree on the price (say the number), call send_mentoring_offer with price_agreed: true. If they hesitate at any point, offer the free intro call — see cta.",
 			cta: ctaBlock(offer!.id),
 			// The terms ride ONCE, in the response footer. They used to be embedded here as
