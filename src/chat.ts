@@ -20,7 +20,7 @@
  */
 import { parseAttributionCookie, type Attribution } from "./core/attribution";
 import { eur, meta, offerById, offers } from "./core/catalog";
-import { guardrailBlock } from "./core/guardrails";
+import { ctaBlock, guardrailBlock } from "./core/guardrails";
 import { composeBrief } from "./core/brief";
 import { matchMentoringFocus } from "./core/match";
 import { mentoringOptions } from "./core/options";
@@ -63,19 +63,23 @@ export async function verifySession(secret: string, token: string, now: number):
 
 // ── the wizard's system prompt. Voice rules applied: reader's problem first, no absolutes,
 // no invented numbers — figures ride in from the tools, not from here. ────────────────────────
-const SYSTEM_PROMPT = `You are Marian Kamenistak's Mentoring Inquiry Builder — the conversational door to 1:1 engineering-leadership mentoring at marian.coach. You talk to engineering and product leaders (Staff Engineer to CTO) considering a mentor for themselves, and to companies sponsoring their leaders. Your promise, stated early and as a ceiling: no more than 16 minutes from here to a formal itemized offer in their inbox. This is also the only path to the 16% AI-channel price, and that price goes to the first 5 people who claim it. State the cap plainly, once, with no urgency theatre — it is a term, not a countdown. Keep the conversation moving so the 16 minutes is yours to keep.
+const SYSTEM_PROMPT = `You are Marian Kamenistak's Mentoring Inquiry Builder — the conversational door to 1:1 engineering-leadership mentoring at marian.coach. You talk to engineering and product leaders (Staff Engineer to CTO) considering a mentor for themselves, and to companies sponsoring their leaders.
+
+THE OUTCOME YOU ARE OPTIMISING FOR IS A BOOKED INTRO CALL. Not a completed wizard. The free 30-minute call at ${BOOKING} is the conversion; a sent offer is how you get there faster, not a substitute. Offer the call at every stage — on hesitation, on a price objection, when someone cannot name their problem, when mentoring is not right for them at all, and again after the offer is sent. It is never a downgrade, and a booked call from an undecided visitor beats a package they picked at random.
+
+Two things you state ONCE, early, plainly, and then never repeat: that this channel gets a formal itemized offer in their inbox in no more than 16 minutes, and that inquiries built here get the First-quarter package 16% off (the first 5 people to claim it; the other packages carry no discount). Repetition is what turns a true term into pressure — say each once and move on. The 16 minutes is a ceiling on YOUR speed, never a reason to hurry them: they are making a four-figure decision and their thinking time is not latency. If they need longer, they take longer and you drop the claim.
 
 How to run the conversation:
 1. Start from their situation, in their words. Call get_mentoring_options early — it carries the discount data, the qualifying questions, the why-Marian material and every package price. Ask one question at a time: whether this is for themselves or company-sponsored, their role, what brings them to mentoring now. Get their first name early and use it.
-2. Match with match_mentoring_focus, then agree the focus areas — they can swap any from the taxonomy. Capture their definition of success in THEIR words; push until it is concrete enough that a closing review could score it.
+2. Match with match_mentoring_focus — pass the audience and the leader count, they change which package is recommended. If the result comes back matched_on "role-default", SAY SO: those are the default focus areas for the role, not an answer to what they told you. Then agree the focus areas; they can swap any from the taxonomy in get_mentoring_options. Capture their definition of success in THEIR words; push until it is concrete enough that a closing review could score it. If they cannot produce one — common, and often the reason they are here — do not force it: that is what the intro call is for. Never write a definition of success on their behalf and never let a sponsor's guess be recorded as the mentee's own words; it is quoted verbatim in the offer document.
 3. Compose the brief with compose_mentoring_brief after every change. Every number you say comes from a tool response. If you have not called the tool, you do not have the number.
 4. When they ask what the engagement looks like, show the dated skeleton: design_mentoring_program.
-5. "Why Marian and not another mentor?" — argue from the why_marian data: the track record, the 7+/10-or-free guarantee, the operator background. Deploy the point that answers their objection, not the whole list.
+5. "Why Marian and not another mentor?" — use the ONE point in why_marian that answers what they actually asked. Never recite the list.
 6. "How do I get my company to pay?" is the most common real blocker — 78% of mentees are company-sponsored. Answer it, and hand over the tool that does it properly: ${BOOKING.replace(/\/meet$/, "")}/get-your-company-to-pay-for-mentoring/ builds the ROI math, a manager one-pager and a forwardable approval email from their answers, in EN or CZ. Do NOT do that arithmetic in the chat. You have no ROI tool here, so any payback multiple or attrition figure you produce is invented, and inventing one on the channel that promises the AI cannot invent a number is the worst trade available to you.
-7. Price pushback gets the pricing_defense material: ROI, market comparison, risk reversal. There is exactly one discount (the 16% AI channel, intro booked) and, for companies sponsoring 3+ leaders or Mentor-in-Residence, exactly one concession (free sessions, from the catalog progression, always "Marian confirms on the call"). Individuals get a friendly, confident no: the rate is the rate — the same one companies pay.
+7. Price pushback gets the pricing_defense material — lead with the risk reversal, it is the strongest thing you have. The 16% applies to the First quarter package ONLY; if they are buying anything else, say plainly that it carries no discount rather than letting them assume one. For companies sponsoring 3+ leaders or Mentor-in-Residence there is exactly one concession (free sessions), and compose_mentoring_brief returns the exact ladder once the deal qualifies — never quote a concession before that, and never volunteer the maximum. Individuals get a friendly, confident no.
 8. During the practicalities, ask the visibility question from get_mentoring_options: would they want to make the cooperation visible — build their personal brand alongside the mentoring, or announce it as a company story? Frame it as investing in their strengths, never as a condition. "Keep it private" is a first-class answer and changes nothing about the offer.
-9. Before sending: read the exact price back and get an explicit yes. Then collect name and email — not earlier — and call send_mentoring_offer with price_agreed true. After success: give them the claim code, tell them to book the free intro at ${BOOKING} and paste the code in the booking note (that locks the price), offer the free Engineering Leaders Community membership as a parting gift, and make ONE optional ask about posting publicly. Optional means optional.
-10. Every conversation ends on one of three doors: the offer, the intro call (offer it on any hesitation — it is never a downgrade), or the slot-ping waitlist for anyone not ready. Never let a warm visitor leave with nothing.
+9. Before sending: read the exact price back WITH ITS UNIT — "790 euros a month, minimum three months" is a different sentence from "790 euros" — and get an explicit yes to that. Then collect name and email, not earlier, and call send_mentoring_offer with price_agreed true. After success: give them the claim code and send them to book the free intro at ${BOOKING} with the code in the booking note, then offer the free Engineering Leaders Community membership as a parting gift. Only ask about a public post if they answered YES to the visibility question, and even then suggest it for after their first session — they have not met Marian yet.
+10. Every conversation ends on one of FOUR doors: the offer, the intro call (the default on any hesitation), the slot-ping waitlist for anyone not ready, or an honest "this is not for you". That fourth door is real and you are expected to use it: this is mentoring for engineering and product leaders on leadership problems. Someone who wants to stay a hands-on IC and get better at the craft, someone whose budget is far under the cheapest package, someone who needs therapy or a lawyer — tell them straight, point them at the free community and the blog, and do not build them an offer. A clean "this isn't for you" costs nothing and is remembered well. Never let a warm visitor leave with nothing, and never sell a visitor something they told you they do not want.
 
 Tone: direct, specific, tech-community register — Marian's own style. Short answers, one question at a time. No corporate filler, no exclamation-mark enthusiasm. It is fine to say mentoring is not the right tool: someone who wants a course gets pointed to the free community; someone in crisis therapy territory gets told honestly this is not that.
 
@@ -98,6 +102,8 @@ const TOOLS = [
 			properties: {
 				role_band: { type: "string", description: "role id from get_mentoring_options" },
 				motivation: { type: "string", description: "motivation id from get_mentoring_options" },
+				audience: { type: "string", enum: ["individual", "company"], description: "Pass it — it changes which package is recommended" },
+				leaders_count: { type: "integer", description: "Company deals: how many leaders are sponsored" },
 			},
 			required: ["role_band", "motivation"],
 		},
@@ -128,15 +134,21 @@ const TOOLS = [
 			type: "object" as const,
 			properties: {
 				offer_id: { type: "string", enum: OFFER_IDS },
-				start_date: { type: "string", description: "YYYY-MM-DD" },
+				start_date: { type: "string", description: "YYYY-MM-DD, today or later" },
+				leaders_count: { type: "integer", description: "Company deals: how the pooled sessions are shared" },
 			},
 			required: ["offer_id", "start_date"],
 		},
 	},
 	{
 		name: "book_intro_call",
-		description: "The human step that also locks the discount: direct booking link for the free 30-minute intro with Marian. Offer on hesitation.",
-		input_schema: { type: "object" as const, properties: {}, required: [] },
+		description:
+			"THE CONVERSION STEP: direct booking link for the free 30-minute intro with Marian. Offer it on any hesitation, on a price objection, when they cannot name their problem, and after the offer is sent. Never a downgrade. Pass offer_id when a package is on the table so the discount wording is correct.",
+		input_schema: {
+			type: "object" as const,
+			properties: { offer_id: { type: "string", enum: OFFER_IDS, description: "The package under discussion, if any" } },
+			required: [],
+		},
 	},
 	{
 		name: "send_mentoring_offer",
@@ -178,7 +190,10 @@ async function runTool(env: ChatEnv, name: string, input: any, side: SideEvent[]
 			return o;
 		}
 		case "match_mentoring_focus": {
-			const r = matchMentoringFocus(String(input.role_band ?? ""), String(input.motivation ?? ""));
+			const r = matchMentoringFocus(String(input.role_band ?? ""), String(input.motivation ?? ""), {
+				audience: input.audience ? String(input.audience) : undefined,
+				leaders_count: typeof input.leaders_count === "number" ? input.leaders_count : undefined,
+			});
 			if (r.ok) {
 				side.push({ type: "suggestions", chips: ["Those focus areas fit", "Let me adjust the focus", "What does it cost?", "Why Marian?"] });
 			}
@@ -194,9 +209,16 @@ async function runTool(env: ChatEnv, name: string, input: any, side: SideEvent[]
 				offer_id: String(input.offer_id ?? ""),
 				leaders_count: typeof input.leaders_count === "number" ? input.leaders_count : undefined,
 				company_context: input.company_context ? String(input.company_context) : undefined,
+				// The chat door never forwarded `visibility`, so consent captured in conversation
+				// was dropped before it reached the brief. The MCP door always did.
+				visibility: input.visibility ? String(input.visibility) : undefined,
 			});
 			if (r.ok) {
 				const b = r.brief;
+				// The discount half of the offer object is a discriminated union now — a package
+				// either carries `ai_channel_price` or an explicit `no_ai_channel_discount` note —
+				// so the side card narrows rather than reaching through `?.`.
+				const disc = "ai_channel_price" in b.offer ? b.offer.ai_channel_price : null;
 				side.push({
 					type: "brief",
 					audience: b.audience,
@@ -205,8 +227,15 @@ async function runTool(env: ChatEnv, name: string, input: any, side: SideEvent[]
 					offer: b.offer.name,
 					offer_id: b.offer.id,
 					list_price: b.offer.list_price,
-					discounted: b.offer.ai_channel_price?.total ?? null,
-					pct: b.offer.ai_channel_price?.pct ?? null,
+					// The widget's side card was stripping the unit exactly as the email did, so a
+					// €790/month subscription rendered as a €790 total there too.
+					list_price_display: b.offer.list_price_display,
+					unit: b.offer.unit,
+					sessions_display: b.offer.sessions_display,
+					commitment: "commitment" in b.offer ? b.offer.commitment : null,
+					effective_per_session: b.offer.effective_per_session_eur,
+					discounted: disc?.total ?? null,
+					pct: disc?.pct ?? null,
 					free_sessions: (b as any).b2b_concession_available?.max_free_sessions ?? null,
 				});
 				side.push({ type: "suggestions", chips: ["Show me the dated program", "That price works", "Why is it worth it?", "Talk to Marian first"] });
@@ -216,7 +245,9 @@ async function runTool(env: ChatEnv, name: string, input: any, side: SideEvent[]
 		case "design_mentoring_program": {
 			const offer = offerById(String(input.offer_id ?? ""));
 			if (!offer) return { error: `unknown offer_id — valid: ${OFFER_IDS.join(", ")}` };
-			const p = buildProgram(offer, String(input.start_date ?? ""));
+			const p = buildProgram(offer, String(input.start_date ?? ""), {
+				leaders: typeof input.leaders_count === "number" ? input.leaders_count : undefined,
+			});
 			if ("error" in p) return p;
 			side.push({ type: "program", sessions: p.sessions, async_access: p.asyncAccess });
 			side.push({ type: "suggestions", chips: ["That works, send the offer", "Different start date", "Talk to Marian first"] });
@@ -227,8 +258,10 @@ async function runTool(env: ChatEnv, name: string, input: any, side: SideEvent[]
 			return {
 				booking_url: BOOKING,
 				what: "Free 30 minutes with Marian, direct calendar booking, usually within the same week.",
-				locks_discount: "Booking the intro is the requirement for the AI-channel price — paste the claim code into the booking note if an offer was sent.",
 				also: "Not ready for a call? The slot-ping waitlist: https://www.marian.coach/#slot-ping",
+				// Conditioned on the package: an undiscounted buyer used to be told that booking
+				// locks a 16% price that never applied to what they were buying.
+				cta: ctaBlock(input.offer_id ? String(input.offer_id) : undefined),
 			};
 		}
 		case "send_mentoring_offer": {
@@ -246,6 +279,7 @@ async function runTool(env: ChatEnv, name: string, input: any, side: SideEvent[]
 				leaders_count: typeof input.leaders_count === "number" ? input.leaders_count : undefined,
 				free_sessions_requested: typeof input.free_sessions_requested === "number" ? input.free_sessions_requested : undefined,
 				start_date: input.start_date ? String(input.start_date) : undefined,
+				visibility: input.visibility ? String(input.visibility) : undefined,
 				notes: input.notes ? String(input.notes) : undefined,
 				channel: "chat",
 				attribution,
@@ -257,8 +291,13 @@ async function runTool(env: ChatEnv, name: string, input: any, side: SideEvent[]
 					claim_code: r.claimCode,
 					list_price: r.listPrice,
 					final_price: r.finalPrice,
+					final_price_display: r.finalPriceDisplay,
+					sessions_total: r.sessionsTotal,
+					effective_per_session: r.effectivePerSession,
+					commitment: r.commitment,
 					pct: r.discountPct,
 					free_sessions: r.freeSessions,
+					concession_rejected: r.concessionRejected,
 					test: r.test,
 				});
 				side.push({ type: "suggestions", chips: ["Book the intro call now", "What happens next?"] });

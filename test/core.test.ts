@@ -27,41 +27,64 @@ describe("catalog pricing", () => {
 		expect(Math.round((1 - fq.ai_channel_price! / fq.price) * 100)).toBe(d.pct);
 	});
 
-	it("discountFor only fires on ai channels + applies_to offers", () => {
-		expect(discountFor("first-quarter", "mcp")).not.toBeNull();
-		expect(discountFor("first-quarter", "chat")).not.toBeNull();
-		expect(discountFor("first-quarter", "web")).toBeNull();
-		expect(discountFor("single-session", "mcp")).toBeNull();
-		expect(discountFor("monthly", "mcp")).toBeNull();
-		expect(discountFor("mentor-in-residence", "mcp")).toBeNull();
+	it("discountFor is gated on the CHANNEL, and now covers every package", () => {
+		// ONE RATE (Marian 2026-08-21): the 16% was extended from first-quarter to the whole
+		// menu, so the per-session rate is identical everywhere. The channel gate is unchanged
+		// and is the thing that still protects the list price on the website.
+		for (const id of ["single-session", "first-quarter", "monthly", "mentor-in-residence"]) {
+			expect(discountFor(id, "mcp")).not.toBeNull();
+			expect(discountFor(id, "chat")).not.toBeNull();
+			expect(discountFor(id, "web")).toBeNull();
+		}
 	});
 
-	it("discounted price never breaks the floor", () => {
-		const d = discountFor("first-quarter", "mcp")!;
-		expect(d.perSessionAfter).toBeGreaterThanOrEqual(aiDiscount()!.floor_eur_per_session);
+	it("ONE RATE: every package is sessions x 361 through the channel", () => {
+		// The claim "the rate is the rate" used to be false on the page that made it — three
+		// different per-session rates (430 / 430 / 395 / 361), with the COMPANY sku cheapest.
+		const floor = aiDiscount()!.floor_eur_per_session;
+		expect(floor).toBe(361);
+		for (const o of offers) {
+			expect(o.ai_channel_price! / (o.sessions ?? 1)).toBe(361);
+			expect(discountFor(o.id, "mcp")!.perSessionAfter).toBe(floor);
+		}
 	});
 });
 
 describe("B2B negotiation gating", () => {
 	it("individuals never negotiate", () => {
 		expect(negotiationFor("individual", 5, "first-quarter")).toBeNull();
-		expect(clampConcession("individual", 5, "first-quarter", 8)).toBe(0);
+		expect(clampConcession("individual", 5, "first-quarter", 8).granted).toBe(0);
 	});
 
-	it("single-leader company deals never negotiate", () => {
+	it("single-leader company deals never negotiate — on ANY package", () => {
 		expect(negotiationFor("company", 1, "first-quarter")).toBeNull();
 		expect(negotiationFor("company", 2, "first-quarter")).toBeNull();
-		expect(clampConcession("company", 2, "first-quarter", 2)).toBe(0);
+		expect(clampConcession("company", 2, "first-quarter", 2).granted).toBe(0);
+		// /ai-mcp-test 2026-08-21 (numerate-skeptic persona): a 1-leader Mentor-in-Residence
+		// brief used to ship the full 8-session concession block with the sentence "Never on
+		// single-leader deals" printed three fields below "leaders_count": 1. The rule text is
+		// unambiguous, so the condition now matches it on every package.
+		expect(negotiationFor("company", 1, "mentor-in-residence")).toBeNull();
 	});
 
-	it("3+ leaders or MiR unlock the progression, capped at max", () => {
+	it("3+ leaders unlock the progression, capped at max", () => {
 		expect(negotiationFor("company", 3, "first-quarter")).not.toBeNull();
-		expect(negotiationFor("company", 1, "mentor-in-residence")).not.toBeNull();
-		expect(clampConcession("company", 3, "first-quarter", 2)).toBe(2);
-		expect(clampConcession("company", 3, "first-quarter", 8)).toBe(8);
-		expect(clampConcession("company", 3, "first-quarter", 16)).toBe(0); // off-progression collapses
-		expect(clampConcession("company", 3, "first-quarter", 5)).toBe(0);
+		expect(negotiationFor("company", 3, "mentor-in-residence")).not.toBeNull();
+		expect(clampConcession("company", 3, "first-quarter", 2).granted).toBe(2);
+		expect(clampConcession("company", 3, "first-quarter", 8).granted).toBe(8);
 		expect(meta.negotiation.max_free_sessions).toBe(8);
+	});
+
+	it("an out-of-bounds concession is REFUSED OUT LOUD, never silently zeroed", () => {
+		// The silent collapse made a legitimate approved concession and a policy violation
+		// look identical to the agent driving the conversation: the buyer heard "8 free
+		// sessions" on the call and the offer email said zero.
+		for (const bad of [1, 3, 5, 7, 9, 16, 100, -4, 2.5]) {
+			const r = clampConcession("company", 3, "first-quarter", bad);
+			expect(r.granted).toBe(0);
+			expect(r.rejected).toBeTruthy();
+		}
+		expect(clampConcession("company", 3, "first-quarter", 4).rejected).toBeNull();
 	});
 });
 
@@ -119,7 +142,9 @@ describe("brief composition", () => {
 describe("guardrails + options carry the magnet", () => {
 	it("guardrails state the one discount, the floor, and the no-stack rule", () => {
 		const text = guardrailLines().join(" ");
-		expect(text).toContain("16%");
+		// The channel is defined by a RATE now, not a percentage — the percentage differed per
+		// package and never reconciled against the totals (2,580 x 0.84 = 2,167.20, not 2,166).
+		expect(text).toContain("€361");
 		expect(text).toContain("€361");
 		expect(text).toContain("No stacking");
 	});
@@ -133,10 +158,18 @@ describe("guardrails + options carry the magnet", () => {
 		expect(slotsOpen()).toBeGreaterThan(0);
 	});
 
-	it("offers list carries the re-gated list prices", () => {
+	it("published LIST prices are untouched — no website edit, no parity gap", () => {
 		expect(offers.find((o) => o.id === "single-session")!.price).toBe(430);
+		expect(offers.find((o) => o.id === "first-quarter")!.price).toBe(2580);
 		expect(offers.find((o) => o.id === "monthly")!.price).toBe(790);
 		expect(offers.find((o) => o.id === "mentor-in-residence")!.price).toBe(6498);
+	});
+
+	it("what a client PAYS through the wizard never went up", () => {
+		expect(offers.find((o) => o.id === "single-session")!.ai_channel_price).toBe(361); // was 430
+		expect(offers.find((o) => o.id === "first-quarter")!.ai_channel_price).toBe(2166); // unchanged
+		expect(offers.find((o) => o.id === "monthly")!.ai_channel_price).toBe(722); // was 790
+		expect(offers.find((o) => o.id === "mentor-in-residence")!.ai_channel_price).toBe(6498); // unchanged
 	});
 });
 

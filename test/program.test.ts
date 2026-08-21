@@ -16,7 +16,10 @@ describe("program engine (deterministic-promise rule)", () => {
 		expect(p.sessions).toHaveLength(6);
 		expect(p.sessions[2].kind).toBe("checkpoint"); // checkpoint_after_session: 3
 		expect(p.sessions[5].kind).toBe("closing-review");
-		expect(p.asyncAccess).toBe(true);
+		// async_access was removed from First quarter 2026-08-21: the offer email was printing
+		// "Between sessions: async access" as a deliverable of a package whose own catalog copy
+		// sells "Priority scheduling, guaranteed slot". Async belongs to Continuous sparring.
+		expect(p.asyncAccess).toBe(false);
 		// bi-weekly spacing (weekend shifts allowed to stretch by ≤2 days)
 		for (let i = 1; i < p.sessions.length; i++) {
 			const gap = (Date.parse(p.sessions[i].date) - Date.parse(p.sessions[i - 1].date)) / 86400000;

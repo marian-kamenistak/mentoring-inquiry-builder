@@ -19,19 +19,29 @@ import {
 	aiDiscount,
 	clampConcession,
 	discountFor,
+	effectiveRate,
 	eur,
 	focusAreaById,
+	isPerLeader,
+	leaderMultiplier,
 	meta,
 	motivationById,
+	multiLeaderError,
 	offerById,
 	offers,
+	priceDisplay,
 	roleBandById,
 	routing,
+	sessionsDelivered,
 	slotsOpen,
+	vatFor,
 	visibilityById,
+	visibilityOptions,
+	type Offer,
 } from "./catalog";
 import { buildProgram, renderProgram, type Program } from "./program";
 
+const DAY_MS = 24 * 60 * 60 * 1000;
 const INQUIRIES_LIST_SLUG = "mentoring_ai_inquiries";
 const PIPELINE_LIST_SLUG = "mentoring_pipeline";
 const ATTIO_LIST_URL = "https://app.attio.com/marian/list/mentoring_ai_inquiries";
@@ -71,9 +81,24 @@ export type SubmitResult =
 			offerName: string;
 			claimCode: string;
 			listPrice: number;
+			listPriceDisplay: string;
 			finalPrice: number;
+			finalPriceDisplay: string;
 			discountPct: number | null;
 			freeSessions: number;
+			/** Set when a requested concession was refused — never silently zero it. */
+			concessionRejected: string | null;
+			/** Canonical consent id, echoed so it is visibly recorded and not merely validated. */
+			visibility: string | null;
+			sessionsTotal: number;
+			/** Paid + free sessions — the divisor behind effectivePerSession. */
+			sessionsCounted: number;
+			effectivePerSession: number;
+			floorPerSession: number;
+			breachesFloor: boolean;
+			commitment: string | null;
+			/** Human-readable VAT treatment for this buyer, incl. the gross figure for individuals. */
+			vat: string | null;
 			test: boolean;
 	  }
 	| { ok: false; error: string };
@@ -98,7 +123,13 @@ export async function claimCode(secret: string | undefined, email: string, offer
 		.map((b) => b.toString(16).padStart(2, "0"))
 		.join("")
 		.slice(0, 8);
-	return `AI16-${ymd}-${hex.toUpperCase()}`;
+	// The prefix names the campaign that actually applied. Stamping "AI16" on a €430 single
+	// session at 0% off was the defect two testers said they would screenshot and argue about
+	// — a code named after a discount that was never granted. Derived from (offerId, channel)
+	// only, so /api/verify reproduces it without needing an extra parameter.
+	const d = discountFor(offerId, channel);
+	const prefix = d ? `AI${d.pct}` : "MC";
+	return `${prefix}-${ymd}-${hex.toUpperCase()}`;
 }
 
 async function postSlack(webhook: string | undefined, text: string): Promise<void> {
@@ -138,18 +169,42 @@ export async function submitInquiry(env: SubmitEnv, input: SubmitInput): Promise
 	if (audience !== "company" && offer.audience === "company") return { ok: false, error: `offer "${offer.id}" is company-only` };
 
 	// ── The authoritative price. Model/client numbers never enter. ──
+	// Same rule as composeBrief: a company deal never silently assumes one leader.
+	if (audience === "company" && (input.leaders_count === undefined || input.leaders_count === null)) {
+		return { ok: false, error: "leaders_count is required for a company deal (that exact spelling) — it sets the price and decides the B2B concession, so it is never assumed to be 1." };
+	}
 	const leaders = audience === "company" ? Math.max(1, Math.min(50, input.leaders_count ?? 1)) : 1;
-	const multi = offer.id === "first-quarter" ? leaders : 1;
+	// Refuse rather than silently under-bill: 10 leaders on `single-session` used to invoice
+	// €430 and 10 on `monthly` €790, because the multiplier was a hardcoded offer-id check.
+	const mlErr = multiLeaderError(offer, leaders);
+	if (mlErr) return { ok: false, error: mlErr };
+	const multi = leaderMultiplier(offer, leaders);
 	const discount = discountFor(offer.id, channel);
 	const perLeader = discount ? discount.priceAfter : offer.price;
 	const listPrice = offer.price * multi;
 	const finalPrice = perLeader * multi;
-	const freeSessions = clampConcession(audience, leaders, offer.id, input.free_sessions_requested ?? 0);
+	const concession = clampConcession(audience, leaders, offer.id, input.free_sessions_requested ?? 0);
+	const freeSessions = concession.granted;
+	const sessionsTotal = sessionsDelivered(offer, leaders);
+	const rate = effectiveRate(finalPrice, offer, leaders, freeSessions);
 
-	const visibility = input.visibility && visibilityById(input.visibility) ? input.visibility : null;
+	// Consent must never fail open. An unrecognised visibility value used to vanish silently,
+	// leaving a record indistinguishable from one where consent was never asked.
+	if (input.visibility?.trim() && !visibilityById(input.visibility)) {
+		return {
+			ok: false,
+			error: `unknown visibility "${input.visibility}" — this records CONSENT and is never guessed. Valid: ${visibilityOptions.map((v) => v.id).join(", ")}.`,
+		};
+	}
+	const visibility = input.visibility && visibilityById(input.visibility) ? visibilityById(input.visibility)!.id : null;
 
 	const now = new Date();
 	const code = await claimCode(env.CLAIM_SECRET, email, offer.id, channel, now);
+	// Every tester who tried to raise a purchase order stopped at the same missing field: an
+	// offer with no expiry, whose price was instead conditional on an unnumbered race against
+	// strangers. 30 days is a date a buyer can put in a calendar and a committee can approve
+	// against; the claim code already carries its issue date.
+	const validUntil = new Date(now.getTime() + 30 * DAY_MS).toISOString().slice(0, 10);
 	const { first, last } = splitName(name);
 
 	// Test-mode guard (mc-web + ELC precedent): previews emails + [TEST] Slack, CRM untouched.
@@ -168,11 +223,21 @@ export async function submitInquiry(env: SubmitEnv, input: SubmitInput): Promise
 	const focusLines = focus.map((f) => `• ${f!.label}`);
 	const priceLines = discount
 		? [
-				`List price: ${eur(listPrice)}${multi > 1 ? ` (${leaders} leaders × ${eur(offer.price)})` : ""} excl. VAT`,
-				`AI-channel price (-${discount.pct}%, intro booked): ${eur(finalPrice)} excl. VAT`,
+				`List price: ${priceDisplay(offer, listPrice)}${multi > 1 ? ` (${leaders} leaders × ${eur(offer.price)})` : ""}`,
+				`AI-channel price (-${discount.pct}%, intro booked): ${priceDisplay(offer, finalPrice)}`,
 			]
-		: [`Price: ${eur(finalPrice)} excl. VAT`];
-	if (freeSessions > 0) priceLines.push(`B2B concession proposed: +${freeSessions} free sessions (Marian confirms on the intro call)`);
+		: [`Price: ${priceDisplay(offer, finalPrice)}`];
+	if (offer.commitment) priceLines.push(`Commitment: ${offer.commitment.terms}`);
+	{ const v = vatFor(audience, finalPrice); if (v) priceLines.push(`VAT: ${v.display}`); }
+	priceLines.push(`Sessions: ${sessionsTotal}${!isPerLeader(offer) && leaders > 1 ? ` (pooled across ${leaders} leaders)` : ""} — effective ${eur(rate.perSession)}/session`);
+	if (freeSessions > 0) {
+		priceLines.push(`B2B concession proposed: +${freeSessions} free sessions (Marian confirms on the intro call) → effective ${eur(rate.perSession)}/session`);
+	}
+	// Surface the breach to Marian rather than letting him discover it at invoice.
+	if (rate.breachesFloor) {
+		priceLines.push(`⚠ FLOOR BREACH: ${eur(rate.perSession)}/session — ${eur(finalPrice)} across ${rate.sessions} sessions (${sessionsTotal} paid + ${freeSessions} free) is below the stated ${eur(rate.floor)} floor. Confirm before invoicing.`);
+	}
+	if (concession.rejected) priceLines.push(`Concession NOT applied: ${concession.rejected}`);
 
 	const briefLines = [
 		`${offer.name} — built via ${channel === "chat" ? "the marian.coach chat wizard" : "the MCP server"}`,
@@ -193,7 +258,9 @@ export async function submitInquiry(env: SubmitEnv, input: SubmitInput): Promise
 		`Claim code: ${code}`,
 	].join("\n");
 
-	const slackPrice = discount ? `~${eur(listPrice)}~ → *${eur(finalPrice)}* (AI channel, -${discount.pct}%)` : `*${eur(finalPrice)}*`;
+	const slackPrice = discount
+		? `~${eur(listPrice)}~ → *${priceDisplay(offer, finalPrice)}* (AI channel, -${discount.pct}%)`
+		: `*${priceDisplay(offer, finalPrice)}*`;
 	const slackText = [
 		`${isTest ? "[TEST] " : ""}:robot_face: *${name}*${company ? ` (${company})` : ""} agreed a *${offer.name}* offer via *${channel}* at ${slackPrice}${freeSessions ? ` +${freeSessions} free sessions proposed` : ""}`,
 		`${audience} · ${roleBandById(input.role_band)!.label} · ${focus.map((f) => f!.id).join(", ")} · ${email}${visibility?.startsWith("yes") ? " · :loudspeaker: open to public announcement" : ""}`,
@@ -280,9 +347,16 @@ export async function submitInquiry(env: SubmitEnv, input: SubmitInput): Promise
 							package: offer.id,
 							list_price_eur: String(listPrice),
 							final_price_eur: String(finalPrice),
+							// The unit used to be lost on the way to the CRM too: a recurring
+							// €790/month subscription landed in the pipeline as a €790 one-off,
+							// under-forecasting a 12-month deal by roughly 10x.
+							price_unit: offer.unit ?? "per_engagement",
+							sessions_total: String(sessionsTotal),
+							effective_per_session_eur: String(rate.perSession),
 							free_sessions: String(freeSessions),
 							leaders_count: String(leaders),
 							claim_code: code,
+							offer_valid_until: validUntil,
 							...(visibility ? { visibility } : {}),
 						};
 
@@ -372,8 +446,8 @@ export async function submitInquiry(env: SubmitEnv, input: SubmitInput): Promise
 					reply_to: notifyTo,
 					html: offerEmailHtml({
 						first,
-						offerName: offer.name,
-						sessions: offer.sessions ?? 1,
+						offer,
+						sessions: sessionsTotal,
 						focus: focus.map((f) => f!.label),
 						successDef,
 						listPrice,
@@ -381,6 +455,10 @@ export async function submitInquiry(env: SubmitEnv, input: SubmitInput): Promise
 						discountPct: discount?.pct ?? null,
 						freeSessions,
 						leaders,
+						effectivePerSession: rate.perSession,
+						isCompany: audience === "company",
+						vat: vatFor(audience, finalPrice)?.display ?? null,
+						validUntil,
 						code,
 						program,
 					}),
@@ -396,7 +474,33 @@ export async function submitInquiry(env: SubmitEnv, input: SubmitInput): Promise
 	if (!env.RESEND_API_KEY) {
 		console.log("[INQUIRY_SUBMIT_LOG]", { name, email, company, offer: offer.id, listPrice, finalPrice, freeSessions, channel, code });
 	}
-	return { ok: true, offerName: offer.name, claimCode: code, listPrice, finalPrice, discountPct: discount?.pct ?? null, freeSessions, test: isTest };
+	return {
+		ok: true,
+		offerName: offer.name,
+		claimCode: code,
+		listPrice,
+		listPriceDisplay: priceDisplay(offer, listPrice),
+		finalPrice,
+		finalPriceDisplay: priceDisplay(offer, finalPrice),
+		discountPct: discount?.pct ?? null,
+		freeSessions,
+		concessionRejected: concession.rejected,
+		// Echoed back so the consent answer is visible in the result, not merely validated and
+		// then dropped: a tester called the previous behaviour "validation theatre", and she
+		// was right — the answer reached Attio and nothing else.
+		visibility,
+		sessionsTotal,
+		// The count the effective rate is divided by = paid + free. Reporting the paid-only
+		// figure next to a concession rate made the floor warning contradict its own
+		// arithmetic (249.92 x 18 = 4,498.56, not 6,498).
+		sessionsCounted: rate.sessions,
+		effectivePerSession: rate.perSession,
+		floorPerSession: rate.floor,
+		breachesFloor: rate.breachesFloor,
+		commitment: offer.commitment?.terms ?? null,
+		vat: vatFor(audience, finalPrice)?.display ?? null,
+		test: isTest,
+	};
 }
 
 /**
@@ -404,9 +508,9 @@ export async function submitInquiry(env: SubmitEnv, input: SubmitInput): Promise
  * email conventions), accent #D02E7C. Struck list price above the AI-channel price, the
  * claim code in a bordered callout, one CTA: book the intro — the booking locks the price.
  */
-function offerEmailHtml(args: {
+export function offerEmailHtml(args: {
 	first: string;
-	offerName: string;
+	offer: Offer;
 	sessions: number;
 	focus: string[];
 	successDef: string;
@@ -415,20 +519,30 @@ function offerEmailHtml(args: {
 	discountPct: number | null;
 	freeSessions: number;
 	leaders: number;
+	effectivePerSession: number;
+	isCompany?: boolean;
+	vat?: string | null;
+	validUntil: string;
 	code: string;
 	program: Program | null;
 }): string {
-	const { first, offerName, sessions, focus, successDef, listPrice, finalPrice, discountPct, freeSessions, leaders, code, program } = args;
-	const open = slotsOpen();
+	const { first, offer, sessions, focus, successDef, listPrice, finalPrice, discountPct, freeSessions, leaders, effectivePerSession, isCompany, vat, validUntil, code, program } = args;
+	const offerName = offer.name;
 	const d = aiDiscount();
 	const accent = "#D02E7C";
 	const rowStyle = `padding:8px 0;font-size:14px;line-height:1.6;color:#333;border-bottom:1px solid #eee;`;
+	const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+	// The unit — "/ month", "/ quarter", "/ session" — that used to be stripped here, turning
+	// a €790/month subscription and a €6,498/quarter retainer into one-off totals in the one
+	// document the buyer forwards to finance.
+	const unit = offer.unit === "per_month" ? " / month" : offer.unit === "per_quarter" ? " / quarter" : offer.unit === "per_session" ? " / session" : "";
 
 	const headlinePrice = discountPct
-		? `<p style="margin:0 0 2px;font-size:15px;color:#888;"><s>${eur(listPrice)}</s> <span style="color:${accent};font-weight:700;">−${discountPct}% AI channel</span></p>
-     <p style="margin:0 0 6px;font-size:40px;line-height:1.05;font-weight:700;letter-spacing:-0.02em;color:#171717;">${eur(finalPrice)}<span style="font-size:14px;font-weight:500;color:#888;"> excl. VAT</span></p>
-     <p style="margin:0 0 24px;font-size:13px;color:#888;">The ${discountPct}% holds once your free intro call is booked. This price goes to the first ${meta.slots.claim_cap} people${open > 0 ? `, and ${open} of those places are still open` : ""}.</p>`
-		: `<p style="margin:0 0 24px;font-size:40px;line-height:1.05;font-weight:700;letter-spacing:-0.02em;color:#171717;">${eur(finalPrice)}<span style="font-size:14px;font-weight:500;color:#888;"> excl. VAT</span></p>`;
+		? `<p style="margin:0 0 2px;font-size:15px;color:#888;"><s>${eur(listPrice)}</s> <span style="color:${accent};font-weight:700;">−${discountPct}% AI channel, you save ${eur(listPrice - finalPrice)}</span></p>
+     <p style="margin:0 0 6px;font-size:40px;line-height:1.05;font-weight:700;letter-spacing:-0.02em;color:#171717;">${eur(finalPrice)}<span style="font-size:14px;font-weight:500;color:#888;">${unit} excl. VAT</span></p>
+     <p style="margin:0 0 24px;font-size:13px;color:#888;">That is ${eur(effectivePerSession)} a session. The ${discountPct}% holds once your free intro call is booked — this price goes to the first ${meta.slots.claim_cap} people who claim it.</p>`
+		: `<p style="margin:0 0 6px;font-size:40px;line-height:1.05;font-weight:700;letter-spacing:-0.02em;color:#171717;">${eur(finalPrice)}<span style="font-size:14px;font-weight:500;color:#888;">${unit} excl. VAT</span></p>
+     <p style="margin:0 0 24px;font-size:13px;color:#888;">That is ${eur(effectivePerSession)} a session. This is the published list price — there is no AI-channel discount on ${esc(offerName)}.</p>`;
 
 	const programHtml = program
 		? `<tr><td colspan="2" style="padding:18px 0 4px;font-size:12px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:${accent};">Program skeleton (planning targets)</td></tr>
@@ -459,17 +573,46 @@ function offerEmailHtml(args: {
       <p style="margin:0 0 2px;font-size:12px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:${accent};">${offerName}${leaders > 1 ? ` × ${leaders} leaders` : ""}</p>
       ${headlinePrice}
       <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-        <tr><td style="${rowStyle}">Sessions</td><td align="right" style="${rowStyle}white-space:nowrap;">${sessions * leaders} × 60 min${leaders > 1 ? ` (${sessions} per leader)` : ""}</td></tr>
-        <tr><td style="${rowStyle}">Focus</td><td align="right" style="${rowStyle}">${focus.join("<br>")}</td></tr>
-        <tr><td style="${rowStyle}">Your definition of success</td><td align="right" style="${rowStyle}">${successDef.replace(/</g, "&lt;")}</td></tr>
+        <tr><td style="${rowStyle}">Sessions</td><td align="right" style="${rowStyle}">${sessions} × ${offer.program?.session_minutes ?? 60} min${
+					leaders > 1
+						? isPerLeader(offer)
+							? ` (${offer.sessions} per leader × ${leaders} leaders)`
+							: ` — a pool shared across ${leaders} leaders, not ${offer.sessions} each`
+						: offer.commitment?.sessions_are === "per_month"
+							? " per month"
+							: ""
+				}</td></tr>
+        <tr><td style="${rowStyle}">Rate</td><td align="right" style="${rowStyle}">${eur(effectivePerSession)} / session${freeSessions ? ` (${eur(finalPrice)} ÷ ${sessions + freeSessions} sessions, incl. the ${freeSessions} free)` : ""}</td></tr>
+        ${offer.commitment ? `<tr><td style="${rowStyle}">Commitment</td><td align="right" style="${rowStyle}">${esc(offer.commitment.terms)}</td></tr>` : ""}
+        <tr><td style="${rowStyle}">Focus</td><td align="right" style="${rowStyle}">${focus.map(esc).join("<br>")}</td></tr>
+        <tr><td style="${rowStyle}">Your definition of success</td><td align="right" style="${rowStyle}">${esc(successDef)}</td></tr>
         ${freeSessions ? `<tr><td style="${rowStyle}">B2B concession (proposed)</td><td align="right" style="${rowStyle}white-space:nowrap;">+${freeSessions} free sessions</td></tr>` : ""}
+        ${offer.program?.async_access ? `<tr><td style="${rowStyle}">Between sessions</td><td align="right" style="${rowStyle}">Async access (Slack/WhatsApp, fair use)</td></tr>` : ""}
+        ${offer.installments && leaders === 1 && discountPct ? `<tr><td style="${rowStyle}">Payment option</td><td align="right" style="${rowStyle}white-space:nowrap;">${offer.installments.count} monthly payments of ${eur(offer.installments.ai_channel_eur)}</td></tr>` : ""}
         <tr><td style="${rowStyle}">Guarantee</td><td align="right" style="${rowStyle}">Any session below 7/10 is free</td></tr>
+        <tr><td style="${rowStyle}">If it isn't working</td><td align="right" style="${rowStyle}">${esc(meta.stop_rule)}</td></tr>
         ${programHtml}
+      </table>
+      <!-- The three things every finance reviewer asked for and none of them found: who
+           invoices, what VAT applies, and how long the quote is good for. They were sitting in
+           the terms block appended to every tool response and never reached the document. -->
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-top:22px;background-color:#faf7f2;border-radius:12px;">
+        <tr><td style="padding:16px 18px;font-size:13px;line-height:1.7;color:#555;">
+          <strong style="color:#171717;">${leaders > 1 || isCompany ? "For your finance team" : "The paperwork"}</strong><br>
+          Invoiced by ${esc(meta.entity)}${leaders > 1 || isCompany ? ", your PO number on the invoice" : ""}.<br>
+          ${vat ? esc(vat) : `Prices in ${esc(meta.currency)}, VAT ${esc(meta.vat)}.`}<br>
+          This offer is valid until ${validUntil}. Nothing here is a contract; final terms are confirmed on the free intro call.
+        </td></tr>
       </table>
       <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-top:26px;">
         <tr><td style="border:2px solid ${accent};border-radius:12px;padding:18px 22px;">
-          <p style="margin:0 0 6px;font-size:14px;font-weight:700;color:#171717;">Next step — this locks the price:</p>
-          <p style="margin:0;font-size:14px;line-height:1.6;color:#333;">Book your free 30-minute intro call and paste <strong>${code}</strong> into the booking note. ${discountPct ? `The ${discountPct}% AI-channel price holds while the open slots last.` : ""}${freeSessions ? " Marian confirms the free-sessions proposal on the call." : ""}</p>
+          <p style="margin:0 0 6px;font-size:14px;font-weight:700;color:#171717;">${discountPct ? "Next step — this locks the price:" : "Next step:"}</p>
+          <p style="margin:0;font-size:14px;line-height:1.6;color:#333;">Book your free 30-minute intro call and paste <strong>${code}</strong> into the booking note. ${
+						discountPct
+							? `That booking is what locks the ${discountPct}% — it holds until ${validUntil} or until the ${meta.slots.claim_cap} places are claimed, whichever comes first.`
+							: `There is no discount to lock on ${esc(offerName)} — the call is simply where you and Marian check the fit before anything is invoiced.`
+					}${freeSessions ? " Marian confirms the free-sessions proposal on the call." : ""}</p>
+          <p style="margin:8px 0 0;font-size:14px;line-height:1.6;color:#333;">Direct link: <a href="${meta.booking_url}" style="color:${accent};">${meta.booking_url}</a></p>
         </td></tr>
       </table>
       <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:24px;">
@@ -479,7 +622,7 @@ function offerEmailHtml(args: {
       </table>
       <p style="margin:30px 0 4px;font-size:15px;line-height:1.65;color:#333;">Nothing here is a contract — the intro call is where we both check the fit. If it's not a fit, no hard feelings and no invoice.</p>
       <p style="margin:16px 0 0;font-size:15px;line-height:1.5;color:#171717;font-weight:600;">Marian Kamenistak</p>
-      <p style="margin:0;font-size:13px;line-height:1.5;color:#888;">${(d && `3,400+ sessions · 300+ leaders · 9.2/10 avg`) ?? ""} · <a href="https://www.marian.coach/?ref=offer-email" style="color:${accent};">marian.coach</a></p>
+      <p style="margin:0;font-size:13px;line-height:1.5;color:#888;">3,400+ sessions · 300+ leaders · 9.2/10 across 300+ reviews · <a href="https://www.marian.coach/?ref=offer-email" style="color:${accent};">marian.coach</a></p>
     </td></tr>
     <tr><td align="center" style="padding:24px 20px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
       <p style="margin:0;font-size:12px;line-height:1.6;color:#888;">You got this because you built a mentoring inquiry through marian.coach's AI wizard. One more thing, free either way: the <a href="https://www.engineeringleaders.io/partner/membership/free/?ref=offer-email" style="color:${accent};">Engineering Leaders Community</a> Marian founded — meetups, Slack with 3,100+ leaders, newsletter.</p>
