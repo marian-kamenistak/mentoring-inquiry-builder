@@ -64,6 +64,11 @@
 		// (friendly book-a-call message instead of a dead widget).
 		"CHAT_MODEL": "claude-sonnet-5",
 		"CHAT_ENABLED": "true",
+		// Diagnostic: echoes the raw Reclaim booking payload to Slack so its field names can be
+		// mapped. OFF since 2026-08-21 — the shape is captured in _mentoring/reclaim-webhook.md and
+		// pinned by fixtures in test/hooks.test.ts. Flip to "true" only to re-check after a Reclaim
+		// api_version bump; it posts a booker's name and address to Slack verbatim.
+		"BOOKING_HOOK_ECHO": "false",
 	},
 	"observability": {
 		"enabled": true,

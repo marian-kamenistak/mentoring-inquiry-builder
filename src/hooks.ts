@@ -30,6 +30,10 @@ export type HookEnv = {
 	SLACK_WEBHOOK_URL?: string;
 	GA4_MEASUREMENT_ID?: string;
 	GA4_API_SECRET?: string;
+	/** Shared secret for www.marian.coach/api/prep-invite. Unset → the prep email is skipped. */
+	PREP_INVITE_SECRET?: string;
+	/** "true" → echo the raw booking payload to Slack. Diagnostic, see the echo block below. */
+	BOOKING_HOOK_ECHO?: string;
 };
 
 const json = (data: unknown, status = 200): Response =>
@@ -50,6 +54,51 @@ export function isCancellationPayload(raw: string): boolean {
 	return /cancel|declin|delet|remov/i.test(raw);
 }
 
+/**
+ * The attendee's name, if the payload carries one in a shape we can trust.
+ *
+ * WHY THIS IS DELIBERATELY NARROW. The first real booking (2026-08-21) produced an Attio Person
+ * with no name at all: `body.name` was absent, so `matchedName` fell back to the address and
+ * Slack announced "Intro booked — haytham88@gmail.com". The obvious fix — scan the raw payload
+ * for `"name"` — is worse than the bug, because a booking payload is full of names that are not
+ * the attendee's: the event ("Marian and Haytham - Mentoring open door"), the scheduling link,
+ * the webhook, the calendar, the timezone. Writing one of those into a CRM as a person's name is
+ * not recoverable by looking at the record later.
+ *
+ * So: explicit fields first, then ONLY attendee/invitee/guest-scoped keys, never a bare "name".
+ * Anything that looks like an address or an event title is rejected. When nothing qualifies this
+ * returns "" and the name is left to /api/booking-attr, which reads it from Reclaim's own return
+ * redirect (`?attendee_name=`) — a shape that has been observed rather than guessed.
+ */
+export function extractAttendeeName(raw: string, body: any): string {
+	const candidates: unknown[] = [
+		// VERIFIED 2026-08-21 by a deliberate test booking + cancel (both payloads captured in
+		// #mc-mentoring-bot). Reclaim api_version v2026-04-13 nests the booker under
+		// meeting.attendee, and the ONLY bare `name` in the payload is participants[0].name —
+		// which is Marian. That is the exact value a broad scan would have written into every
+		// booker's Attio record, so this path stays first and the bare key stays excluded.
+		body?.meeting?.attendee?.attendee_name,
+		body?.name,
+		body?.attendee?.name,
+		body?.attendee_name,
+		body?.attendeeName,
+		body?.invitee?.name,
+		body?.invitee_name,
+		Array.isArray(body?.attendees) ? body.attendees[0]?.name : undefined,
+	];
+	const scoped = raw.match(/"(?:attendee|invitee|guest|booker)_?(?:full_?)?name"\s*:\s*"([^"]{1,120})"/i)?.[1];
+	if (scoped) candidates.push(scoped);
+
+	for (const c of candidates) {
+		const v = typeof c === "string" ? c.trim() : "";
+		if (!v || v.length > 120) continue;
+		if (v.includes("@")) continue; // an address, not a name
+		if (/\s-\s/.test(v)) continue; // "Marian and Haytham - Mentoring open door"
+		return v;
+	}
+	return "";
+}
+
 /** "How did you hear about me?" free-text answer, if the payload has one — scoped to the VALUE
  * next to a hear/slyšel/dozvěděl-labelled key so it doesn't over-match incidental text like
  * "hope to hear from you: soon". Handles both `"<label with hear>":"<answer>"` and Reclaim/typeform-
@@ -59,6 +108,38 @@ export function extractHeardFrom(raw: string): string | null {
 	if (asKey) return asKey.trim();
 	const asQuestion = raw.match(/"[^"]*(?:hear|slyšel|dozvěděl)[^"]*"\s*,\s*"answer"\s*:\s*"([^"]{2,200})"/i)?.[1];
 	return asQuestion ? asQuestion.trim() : null;
+}
+
+/**
+ * "Monday, 31 August at 21:30" for the prep email's date line, rendered in the ATTENDEE's own
+ * timezone — not Marian's. Reclaim sends `meeting.attendee.attendee_zone_id.id` as an IANA name
+ * for exactly this, and a booker in London being told a Prague time is worse than no time at all.
+ *
+ * Shapes seen in the two captured payloads: Created carried a local offset
+ * ("2026-08-31T21:30:00+02:00") and Cancelled carried UTC ("2026-08-31T19:30:00Z") for the SAME
+ * meeting — so this must never read the string, only the parsed instant.
+ *
+ * Returns "" on anything unexpected. The email drops the line rather than printing a wrong time.
+ */
+export function formatMeetingWhen(body: any): string {
+	const start = body?.meeting?.start_time;
+	if (typeof start !== "string" || !start) return "";
+	const d = new Date(start);
+	if (Number.isNaN(d.getTime())) return "";
+	const tz = body?.meeting?.attendee?.attendee_zone_id?.id || "Europe/Prague";
+	try {
+		// Composed from parts rather than taking a locale's own joining: en-GB renders
+		// "Monday 31 August", and the format Marian writes by hand is "Tuesday, 25 August at 17:00".
+		// The comma is his, so it is assembled here instead of inherited from ICU.
+		const parts = new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: tz }).formatToParts(d);
+		const part = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+		const weekday = part("weekday"), day = part("day"), month = part("month");
+		if (!weekday || !day || !month) return "";
+		const time = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: tz }).format(d);
+		return `${weekday}, ${day} ${month} at ${time}`;
+	} catch {
+		return "";
+	}
 }
 
 /** `call_booked` is a conversion, so it may only fire on the actual transition INTO `Intro call`.
@@ -88,7 +169,10 @@ export async function handleBookingHook(request: Request, env: HookEnv, url: URL
 	if (!env.BOOKING_HOOK_SECRET) return json({ ok: false, error: "hook_not_configured" }, 503);
 
 	const raw = await request.text().catch(() => "");
-	let body: { secret?: string; email?: string; name?: string; note?: string } = {};
+	/** `meeting` is Reclaim's own envelope — shape captured 2026-08-21, see reclaim-webhook.md.
+	    Left as `any` on purpose: it is a third party's payload, and the code reads it through
+	    narrow accessors (extractAttendeeName, formatMeetingWhen) that each validate what they take. */
+	let body: { secret?: string; email?: string; name?: string; note?: string; meeting?: any } = {};
 	try {
 		body = JSON.parse(raw);
 	} catch {
@@ -101,6 +185,28 @@ export async function handleBookingHook(request: Request, env: HookEnv, url: URL
 	const provided = url.searchParams.get("secret") ?? request.headers.get("x-hook-secret") ?? body.secret ?? "";
 	if (provided !== env.BOOKING_HOOK_SECRET) return json({ ok: false, error: "forbidden" }, 403);
 
+	console.log("[BOOKING_HOOK_RAW]", raw.slice(0, 2000));
+
+	// ...and to Slack, because the log alone has been unreadable: the shared CLOUDFLARE_API_TOKEN
+	// 403s on every observability endpoint (verified 2026-08-21 — it lists 33 Workers fine, so it is
+	// a missing scope, not a bad request), and the dashboard needs a human. Echoing here means the
+	// next booking, real or a deliberate test, reveals the payload shape to whoever is looking.
+	// Placed BEFORE the cancellation guard on purpose: reclaim-webhook.md's other open gap is that
+	// the handler cannot tell a booking from a reschedule or a cancel, and those payloads return
+	// early — so echoing after the guard would never show the very shapes that gap needs.
+	// TEMPORARY. Flip BOOKING_HOOK_ECHO to "false" in wrangler.jsonc and redeploy once the shape is
+	// written into _mentoring/reclaim-webhook.md — this posts a booker's name and address verbatim.
+	if (env.BOOKING_HOOK_ECHO === "true" && env.SLACK_WEBHOOK_URL) {
+		await fetch(env.SLACK_WEBHOOK_URL, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({
+				text: `:microscope: Raw booking payload (diagnostic — turn off once mapped)\n\`\`\`${raw.slice(0, 2500) || "(empty body)"}\`\`\``,
+				unfurl_links: false,
+			}),
+		}).catch((e) => console.error("booking-hook echo exception", String(e)));
+	}
+
 	// Cancellations/declines must never advance the pipeline or fire a conversion — bail before
 	// any Attio or GA4 work starts.
 	if (isCancellationPayload(raw)) return json({ ok: true, ignored: "cancellation" });
@@ -108,18 +214,42 @@ export async function handleBookingHook(request: Request, env: HookEnv, url: URL
 	// Tolerant extraction: explicit fields first, then a raw-text scan over whatever payload
 	// the trigger sent (Reclaim event JSON, Zapier mapping, manual curl).
 	const claimFromNote = raw.match(/AI16-\d{6}-[0-9A-F]{8}/i)?.[0]?.toUpperCase() ?? null;
-	let email = (body.email ?? "").trim().toLowerCase();
+	let email = (body.email ?? body?.meeting?.attendee?.attendee_email ?? "").trim().toLowerCase();
 	if (!email) {
 		const found = raw.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi) ?? [];
 		email = found.map((e) => e.toLowerCase()).find((e) => !OWN_EMAILS.has(e)) ?? "";
 	}
 	if (!email && !claimFromNote) return json({ ok: false, error: "need_email_or_claim_code" }, 400);
 
+	// The payload shape is STILL unverified — _mentoring/reclaim-webhook.md's "Known gap" asks for
+	// exactly this: read a real one from the logs, then add event-type filtering and pull the name,
+	// meeting time and language from their actual fields instead of inferring them. Logged once per
+	// booking, truncated, and only on the hook path. It carries the booker's name and address, so
+	// it is PII in the Worker log for the retention window — that is the price of stopping the
+	// guesswork, and it comes out once the shape is written down.
+
+	/* Test-mode guard, mirroring /api/prep and /api/email-capture in mc-web. This Worker had none,
+	   which is why Attio still carries People called "GA4 Probe Two" and "Cold Booker Test" from
+	   earlier probes — and, worse, why each of those fired a real GA4 `call_booked`, the primary
+	   Google Ads conversion, which cannot be retracted once sent. A booking hook is the one place
+	   a test is genuinely expensive.
+	   Scoped TIGHT to the address (^test@ / +test@), never to names or free text: a 2026-08-21
+	   audit found /test/i guards elsewhere silently eating submissions from anyone called "Testa".
+	   Slack still posts, so a deliberate test is visible rather than silent. */
+	const isTestBooking = /^test@|\+test@/i.test(email);
+	if (isTestBooking) console.log("[BOOKING_HOOK_TEST_MODE] skipping Attio + GA4 + prep email for", email);
+
 	let locked = false;
 	let createdPerson = false;
-	let matchedName = body.name ?? email;
+	const attendeeName = extractAttendeeName(raw, body);
+	let matchedName = attendeeName || email;
+	// Gates the prep email. A Reclaim retry, a Zapier replay or a reschedule hits this endpoint
+	// again for someone already parked on `Intro call`; the Attio block below flips this to false
+	// in that case so they are not emailed the same question twice. Same transition test that
+	// guards the GA4 conversion — see shouldFireCallBooked.
+	let isFirstBooking = true;
 
-	if (env.ATTIO_TOKEN) {
+	if (env.ATTIO_TOKEN && !isTestBooking) {
 		try {
 			const headers = { Authorization: `Bearer ${env.ATTIO_TOKEN}`, "content-type": "application/json" };
 			let entryId: string | undefined;
@@ -145,7 +275,7 @@ export async function handleBookingHook(request: Request, env: HookEnv, url: URL
 				// Assert (PUT + matching_attribute) rather than POST: race-safe if two hooks land at
 				// once, and it returns the existing record instead of a duplicate.
 				if (!personId) {
-					const { first, last } = splitName(body.name ?? "");
+					const { first, last } = splitName(attendeeName);
 					const created = await fetch("https://api.attio.com/v2/objects/people/records?matching_attribute=email_addresses", {
 						method: "PUT",
 						headers,
@@ -153,7 +283,7 @@ export async function handleBookingHook(request: Request, env: HookEnv, url: URL
 							data: {
 								values: {
 									email_addresses: [email],
-									...(first ? { name: [{ first_name: first, last_name: last, full_name: (body.name ?? "").trim() }] } : {}),
+									...(first ? { name: [{ first_name: first, last_name: last, full_name: attendeeName }] } : {}),
 								},
 							},
 						}),
@@ -190,6 +320,7 @@ export async function handleBookingHook(request: Request, env: HookEnv, url: URL
 						}
 					}
 					const isTransition = shouldFireCallBooked(pipe ? pipeEntry : null);
+					isFirstBooking = isTransition;
 					if (pipe) {
 						// Already on Intro call → the PATCH would be a no-op write. Skip it.
 						if (isTransition) {
@@ -257,22 +388,51 @@ export async function handleBookingHook(request: Request, env: HookEnv, url: URL
 		}
 	}
 
+	// ── Prep email: the one question, asked between the booking and the call ──────────────────
+	// Until this existed (2026-08-21) a booker heard nothing from Marian between booking and the
+	// session — Reclaim's calendar invite was the entire follow-up, so the intro opened cold and
+	// spent its first minutes on discovery. Rendered and sent by mc-web, which owns the email
+	// chassis; this only supplies the address.
+	//
+	// The date line is now real: the payload shape was captured on 2026-08-21 and `when` comes from
+	// meeting.start_time rendered in the attendee's own timezone. It still degrades to no line if
+	// the field is missing or unparseable — a wrong time is worse than none.
+	//
+	// Language still defaults to EN, deliberately. The payload's only locale-ish signal is the
+	// attendee timezone, and Europe/Prague does not mean the booker reads Czech — half of Marian's
+	// Prague pipeline is expats. Guessing wrong here greets someone in a language they do not
+	// speak, which is worse than a formal-but-correct English email. A CZ booker gets re-sent by hand.
+	let prepEmailed = false;
+	if (env.PREP_INVITE_SECRET && email && isFirstBooking && !isTestBooking) {
+		try {
+			const prepRes = await fetch("https://www.marian.coach/api/prep-invite", {
+				method: "POST",
+				headers: { "content-type": "application/json", "x-prep-secret": env.PREP_INVITE_SECRET },
+				body: JSON.stringify({ email, name: attendeeName, when: formatMeetingWhen(body), lang: "en" }),
+			});
+			prepEmailed = prepRes.ok;
+			if (!prepRes.ok) console.error("prep-invite failed", prepRes.status, await prepRes.text().catch(() => ""));
+		} catch (e) {
+			console.error("prep-invite exception", String(e));
+		}
+	}
+
 	if (env.SLACK_WEBHOOK_URL) {
 		await fetch(env.SLACK_WEBHOOK_URL, {
 			method: "POST",
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({
-				text: `:lock: Intro booked — *${matchedName}*${claimFromNote ? ` · claim ${claimFromNote}` : ""}${
+				text: `${isTestBooking ? ":test_tube: TEST booking (nothing written)" : ":lock: Intro booked"} — *${matchedName}*${claimFromNote ? ` · claim ${claimFromNote}` : ""}${
 					locked
 						? " · Attio entry flipped to Intro booked"
 						: createdPerson
 							? " · new Person created and added to the pipeline as Intro call (booked direct, no wizard inquiry)"
 							: " · no matching Attio entry found (check manually)"
-				}`,
+				}${prepEmailed ? " · prep email sent" : isFirstBooking ? " · *prep email NOT sent*" : ""}`,
 				unfurl_links: false,
 			}),
 		}).catch((e) => console.error("booking-hook slack exception", String(e)));
 	}
 
-	return json({ ok: true, locked, created_person: createdPerson, claim: claimFromNote });
+	return json({ ok: true, locked, created_person: createdPerson, claim: claimFromNote, prep_emailed: prepEmailed });
 }
