@@ -4,7 +4,7 @@
   "description": "MCP server: build your engineering-leadership mentoring inquiry with Marian Kamenistak (3,400+ sessions, 300+ leaders, 9.2/10 avg) from your AI assistant. 16 minutes to a formal offer, 16% AI-channel discount.",
   "private": true,
   "scripts": {
-    "deploy": "bash '/Users/mariankamenistak/My Drive/_business/automation/secret-sync/sync-secrets.sh' && wrangler deploy",
+    "deploy": "bash '/Users/mariankamenistak/ai/_platform/secret-sync/sync-secrets.sh' && wrangler deploy",
     "dev": "wrangler dev",
     "start": "wrangler dev",
     "cf-typegen": "wrangler types",
