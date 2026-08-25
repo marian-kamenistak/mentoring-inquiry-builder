@@ -23,6 +23,24 @@
 		{ "pattern": "www.marian.coach/mcp/mentoring*", "zone_name": "marian.coach" },
 		{ "pattern": "marian.coach/mcp/mentoring*", "zone_name": "marian.coach" },
 	],
+	// Turnstile + HMAC secrets live in the account-level Secrets Store, not as per-Worker
+	// secrets. They are NOT third-party auth, so Composio cannot broker them. Source of
+	// truth is still 1Password; _platform/secret-sync/store-sync.sh pushes to the store.
+	//
+	// Each binding is an object with an async .get(), NOT a string. src/index.ts normalises
+	// all five to plain strings at the top of fetch() via resolveSecrets(), so HookEnv /
+	// ChatEnv and every downstream comparison stay unchanged.
+	//
+	// PREP_INVITE_SECRET is a shared HMAC with mc-web (sent as the x-prep-secret header).
+	// Both Workers now bind the SAME store secret, so the two can no longer drift apart —
+	// previously a rotation on one side 403'd every prep invite silently.
+	"secrets_store_secrets": [
+		{ "binding": "CHAT_TURNSTILE_SECRET", "store_id": "e5f76638e1054323adf7fda88007bd94", "secret_name": "MC_TURNSTILE_SECRET" },
+		{ "binding": "BOOKING_HOOK_SECRET", "store_id": "e5f76638e1054323adf7fda88007bd94", "secret_name": "MC_BOOKING_HOOK_SECRET" },
+		{ "binding": "CHAT_SESSION_SECRET", "store_id": "e5f76638e1054323adf7fda88007bd94", "secret_name": "MC_CHAT_SESSION_SECRET" },
+		{ "binding": "CLAIM_SECRET", "store_id": "e5f76638e1054323adf7fda88007bd94", "secret_name": "MC_CLAIM_SECRET" },
+		{ "binding": "PREP_INVITE_SECRET", "store_id": "e5f76638e1054323adf7fda88007bd94", "secret_name": "MC_PREP_INVITE_SECRET" },
+	],
 	"migrations": [
 		{
 			"new_sqlite_classes": ["MentoringInquiryBuilder"],

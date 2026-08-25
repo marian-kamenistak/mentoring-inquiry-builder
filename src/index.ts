@@ -22,6 +22,7 @@ import { ATTRIBUTION, SITE } from "./content";
 import { handleApi } from "./api";
 import { handleChat, type ChatEnv } from "./chat";
 import { handleBookingHook, type HookEnv } from "./hooks";
+import { resolveSecrets } from "./lib/read-secret";
 import { aiDiscount, eur, meta, offerById, offers } from "./core/catalog";
 import { ctaBlock, guardrailBlock } from "./core/guardrails";
 import { composeBrief } from "./core/brief";
@@ -318,8 +319,22 @@ const TOOL_DOCS: ToolDoc[] = [
 	},
 ];
 
+// Secrets moved to the Cloudflare Secrets Store 2026-08-25. A store binding is an
+// object with an async .get(), not a string, so every one of these is normalised to
+// a plain string ONCE here. That keeps `HookEnv`, `ChatEnv` and every downstream call
+// site unchanged — and avoids the failure where one missed usage passes
+// "[object Object]" into an HMAC comparison or a Turnstile verify.
+const STORE_BACKED_SECRETS = [
+	"CHAT_SESSION_SECRET",
+	"CHAT_TURNSTILE_SECRET",
+	"BOOKING_HOOK_SECRET",
+	"PREP_INVITE_SECRET",
+	"CLAIM_SECRET",
+] as const;
+
 export default {
-	fetch(request: Request, env: Env, ctx: ExecutionContext) {
+	async fetch(request: Request, env: Env, ctx: ExecutionContext) {
+		env = (await resolveSecrets(env as unknown as Record<string, unknown>, STORE_BACKED_SECRETS)) as unknown as Env;
 		const url = new URL(request.url);
 		const path = url.pathname.replace(/\/$/, "");
 
