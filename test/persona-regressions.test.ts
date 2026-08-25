@@ -11,6 +11,7 @@ import {
 	clampConcession,
 	effectiveRate,
 	focusAreaById,
+	focusAreas,
 	channelRate,
 	discountFor,
 	matchFocus,
@@ -410,7 +411,30 @@ describe("the sales playbook is not read to the buyer (Petra, Andrew, Klára)", 
 	it("the focus taxonomy is discoverable without submitting an invalid id first", () => {
 		const o = mentoringOptions() as Record<string, unknown>;
 		expect(Array.isArray(o.focus_areas)).toBe(true);
-		expect((o.focus_areas as unknown[]).length).toBe(10);
+		// Bound to the catalog rather than to a literal (was `toBe(10)`, broke on 2026-08-25 when
+		// three focus areas were added). What this test is for is that the WHOLE taxonomy ships in
+		// the entry payload — before, the only way to discover it was to submit a bad id and read
+		// the error. Pinning the count re-asserted nothing and turned every taxonomy change into a
+		// red build with a misleading message.
+		expect((o.focus_areas as unknown[]).length).toBe(focusAreas.length);
+		expect(focusAreas.length).toBeGreaterThan(1);
+	});
+
+	// Added 2026-08-25. sync.mjs now fails the build on an uncovered role-band x motivation pair,
+	// but that guards the YAML on the way in; this guards the generated JSON this Worker actually
+	// reads, which has been hand-edited before. A hole here is not a crash — matchFocus falls back
+	// to the band's `default` row and reports `matched_on: "role-default"` — so it is the kind of
+	// bug that only ever shows up in a transcript, months later, as an answer to a question the
+	// visitor did not ask.
+	it("every role band routes every motivation without falling back to its default row", () => {
+		const holes: string[] = [];
+		for (const band of routing.role_bands) {
+			for (const mot of motivations) {
+				const routed = matchFocus(band.id, mot.id);
+				if (!routed || routed.matchedOn !== "exact") holes.push(`${band.id}/${mot.id}`);
+			}
+		}
+		expect(holes).toEqual([]);
 	});
 
 	it("there is an exit that is not a sale, and it rides on every response", () => {

@@ -66,6 +66,14 @@ export function mentoringOptions() {
 			note: "Ask this FIRST and pass it to match_mentoring_focus along with how many leaders — it changes which package is recommended. A company sponsoring 3+ leaders is pointed at Mentor in Residence; an individual is not.",
 			buying_for_someone_else:
 				"If the buyer is not the person being mentored (an L&D or HR sponsor, a CTO buying for their leaders), say so in company_context and answer the role/motivation questions ON BEHALF of the leaders — and mark in success_definition that it is the sponsor's read, not the mentee's. Never present a sponsor's guess as the mentee's own words: it ends up quoted in the offer document.",
+			// Added 2026-08-25. "individual" was being read as "individual who has not asked their
+			// employer yet", so the wizard kept steering toward the get-your-company-to-pay path at a
+			// caller who had already decided against it, on purpose and for reasons he had thought
+			// about. Being sold the thing you just declined is how a warm lead cools. Paying yourself
+			// is also the strongest commitment signal there is; treat it as one, not as a budget
+			// problem to be solved.
+			self_funded_on_purpose:
+				"Some individuals pay from their own pocket deliberately and want the employer kept out of it — so the mentoring stays theirs, so nobody reads their development as a performance concern, or because what they want to talk about includes their own manager. If they say anything like that: accept it in one sentence, drop the company-pays route, and do not offer to draft the note to their manager. Two things worth telling them, both true: nothing is sent to their employer, and the invoice is issued to them personally (which also means Czech VAT at 21% is added — see the VAT rules, they pay the gross figure). Then move on.",
 		},
 		question_1: {
 			ask: "What's your current role?",
@@ -92,8 +100,38 @@ export function mentoringOptions() {
 			points: WHY_MARIAN,
 			proof: `${MC_FACTS.testimonials} named testimonials at ${SITE}/testimonials/, the mentee capacity chart on the homepage, and the review log (${MC_FACTS.avgReview} across ${MC_FACTS.reviewCount} reviews).`,
 		},
+		// Added 2026-08-25. Everything below was said out loud on an intro call and none of it was
+		// reachable through any tool, so the wizard could describe what a package COSTS and what it
+		// CONTAINS but not what it is like to be in it. That is the part people are actually deciding
+		// on, and the part a competitor cannot copy off the pricing page.
+		what_the_engagement_is_actually_like: {
+			when_to_use:
+				"Surface this when the visitor asks what the sessions are like, what is expected of them, whether it is worth it, or when they are warm but hesitating. Two or three of these, chosen for what they asked. Do not recite the whole object.",
+			session_one:
+				"The first session is a diagnostic and it is deliberately uncomfortable. Marian takes the person apart — strengths, weaknesses, how much of the self-description is real and how much is performance — and the plan gets built from what is left standing. People are warned in advance on purpose: someone who wants an encouraging chat should find out now rather than in the room. It is not a get-to-know-you and it is not a sales call.",
+			between_sessions:
+				"Every session ends with a small piece of homework: talk to this person, put this proposal in front of that one, build this presentation. Small on purpose, because the mentee still has a day job and Marian will not put that at risk. It is also the filter — the interest is in people who do things between sessions rather than people who enjoy talking about them.",
+			cadence:
+				"60 minutes, weekly or bi-weekly. Which of the two is settled AFTER the first session rather than sold up front, because that is when Marian can see how fast the person actually wants to move. If they ask you to commit to a cadence before then, say that it is deliberately left open.",
+			in_person:
+				"Mostly online. Marian is in Prague and there is an office in the centre, so mentees who are in Prague — including the ones who pass through occasionally — usually meet him in person for the start and roughly monthly after that. He also brings mentees along to the community meetups.",
+			network:
+				`Beyond the sessions: Marian runs the engineering leaders community (${meta.cross_sell.url}) and introduces people he trusts to CTOs directly, as a coffee rather than through a recruitment process. Mention it ONLY if the visitor raises careers or moving, and never as a promise or as part of a package — it is not a placement service and it depends on him knowing the person well enough to put his name on it.`,
+			protections:
+				"If they ask what protects them, the two terms are already in the terms block and both are real: a session the mentee rates below 7/10 is free, and if it is not working by session 2 they stop and the rest is on Marian. Do not restate them unprompted — they land as reassurance when nobody asked.",
+		},
 		pricing_defense: {
 			points: PRICING_DEFENSE,
+		},
+		// Added 2026-08-25 from a recorded intro call. All three came up in one conversation and
+		// the wizard had an answer for none of them. They sit next to pricing_defense rather than in
+		// _agent_instructions because the visitor is allowed to hear these answers — and to hear them
+		// as answers, not as rebuttals. Each one names the case where the visitor is right and
+		// Marian is the wrong purchase; a handler that cannot lose is a handler nobody believes.
+		objections: {
+			mba: "\"Maybe I should do an MBA instead\" comes most often from people who cannot yet name what they are missing, so a two-year curriculum feels like a safe container for the question. Answer in this order. First, the case FOR it: an MBA buys a credential, a cohort and general management theory, and if the credential is the actual goal — a move into consulting or finance, a visa, a brand on the CV — it is the right purchase and this is not a substitute. Say that plainly. Second: if what they described is a specific gap — presenting badly, work nobody sees, no seat at the table — that gap closes through reps and feedback on their own live situation, and a lecture hall is a slow way to get either. Third, the sizes are not comparable: an MBA is tens of thousands and two years of evenings. Do not call an MBA a waste of money. Marian sells skills rather than paper and says so on the site; someone who wants the paper should go and get the paper.",
+			my_boss_already_mentors_me: "Common, usually true, and worth respecting — plenty of people arrive already getting time from their CTO or their manager. Do not compete with that person or imply they are doing it badly. Two things are true at once. One: the manager who mentors you is also the person who decides your promotion, your comp and your next role, so there is a set of questions you cannot put to them — anything about them, and anything that begins \"I am thinking of leaving\". Two: internal mentoring runs monthly when the calendar allows, and monthly is roughly the interval at which behaviour does not change. Marian runs weekly or bi-weekly with a small piece of homework in between. Frame this as an addition to their boss, never a replacement.",
+			not_sure_i_have_it_in_me: "The quiet objection, usually disguised as a question about packages: \"I want to be like those people and I am not sure I have it.\" Do not reassure them — reassurance from a tool is worth nothing and they know it. Say what is true instead: this is the most common thing Marian hears from people who are already doing the job well, it is more often a visibility and language gap than a capability gap, and testing which one it is happens to be what the first session is for. Then offer the intro call. Marian says so directly when the ambition and the pace do not match, which is the only reason his yes carries weight.",
 		},
 		offers: offers.map((o) => ({
 			id: o.id,
