@@ -31,6 +31,13 @@ import { mentoringOptions } from "./core/options";
 import { buildProgram, renderProgram } from "./core/program";
 import { submitInquiry, type SubmitEnv } from "./core/submit";
 import { docsHtml, type ToolDoc } from "./docs";
+import {
+	geoFromRequest,
+	instrumentMcpUsage,
+	type McpGeo,
+	type McpUsageConfig,
+	type McpUsageEnv,
+} from "./mcp-usage";
 
 const READ_ONLY = {
 	readOnlyHint: true,
@@ -68,13 +75,29 @@ function toolResult(payload: Record<string, unknown>, opts: { priced?: boolean; 
 	};
 }
 
-export class MentoringInquiryBuilder extends McpAgent<Env> {
+/** See src/mcp-usage.ts. PostHog key = the marian.coach project, the same one the site's own
+ *  analytics writes to, so MCP tool calls and `?ref=mcp` web traffic sit in one funnel. */
+const USAGE_CONFIG: McpUsageConfig = {
+	serverName: "mentoring-inquiry-builder",
+	domain: "marian.coach",
+	posthogKey: "phc_xEinqUjuFui3wB6suwDFAMjQkF9g3G6GcrdqsZQ98dCW",
+};
+
+export class MentoringInquiryBuilder extends McpAgent<Env, unknown, McpGeo> {
 	server = new McpServer({
 		name: "mentoring-inquiry-builder",
 		version: "1.0.0",
 	});
 
 	async init() {
+		instrumentMcpUsage({
+			server: this.server,
+			config: USAGE_CONFIG,
+			env: this.env as McpUsageEnv,
+			geo: this.props ?? {},
+			waitUntil: (p) => this.ctx.waitUntil(p),
+		});
+
 		this.server.registerTool(
 			"get_mentoring_options",
 			{
@@ -385,6 +408,8 @@ export default {
 					headers: { "content-type": "text/html; charset=utf-8" },
 				});
 			}
+			// request.cf only exists on the edge request; hand it to the DO via ctx.props.
+			(ctx as ExecutionContext & { props?: McpGeo }).props = geoFromRequest(request);
 			return MentoringInquiryBuilder.serve("/mcp/mentoring").fetch(request, env, ctx);
 		}
 
