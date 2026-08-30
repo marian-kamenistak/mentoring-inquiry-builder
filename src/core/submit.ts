@@ -355,6 +355,10 @@ export async function submitInquiry(env: SubmitEnv, input: SubmitInput): Promise
 							leaders_count: String(leaders),
 							claim_code: code,
 							offer_valid_until: validUntil,
+							// The free text they typed: payment preferences, urgency, the seat they
+							// actually sit in. It reached the offer email and stopped there, so the
+							// most actionable thing about a lead existed nowhere in the CRM.
+							...(notes ? { notes } : {}),
 							...(visibility ? { visibility } : {}),
 						};
 
