@@ -402,7 +402,7 @@ export async function submitInquiry(env: SubmitEnv, input: SubmitInput): Promise
 							await fetch(`https://api.attio.com/v2/lists/${PIPELINE_LIST_SLUG}/entries`, {
 								method: "POST",
 								headers,
-								body: JSON.stringify({ data: { parent_record_id: personId, parent_object: "people", entry_values: { mentee_stage: "lead", added_via: "AI wizard", source: channel, ...pipeVals } } }),
+								body: JSON.stringify({ data: { parent_record_id: personId, parent_object: "people", entry_values: { mentee_stage: "Not yet", added_via: "AI wizard", source: channel, ...pipeVals } } }),
 							}).catch((e) => console.error("attio pipeline create exception", String(e)));
 						}
 

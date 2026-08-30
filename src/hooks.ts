@@ -142,6 +142,30 @@ export function formatMeetingWhen(body: any): string {
 	}
 }
 
+/**
+ * An Attio write that cannot fail silently.
+ *
+ * `fetch` only REJECTS on a network error — a 400 resolves normally with `res.ok === false`.
+ * So the `.catch((e) => console.error(...))` these calls used to carry logged nothing at all
+ * for the failure that actually happens: Attio 400s the WHOLE request when it names a single
+ * unknown attribute slug, and the hook still returned `{ok:true}` to Reclaim. On 2026-08-30 a
+ * slug rename (`intro_arranged` → `mentee_stage`) shipped to mc-web against the un-renamed
+ * schema and dropped every pipeline write with no trace in any log. This `console.error` is
+ * what the daily `4mc-pipeline-health` job alerts on.
+ */
+async function attioWrite(url: string, init: RequestInit, label: string): Promise<boolean> {
+	const res = await fetch(url, init).catch((e) => {
+		console.error(`attio ${label} exception`, String(e));
+		return null;
+	});
+	if (!res) return false;
+	if (!res.ok) {
+		console.error(`attio ${label} failed`, res.status, await res.text().catch(() => ""));
+		return false;
+	}
+	return true;
+}
+
 /** `call_booked` is a conversion, so it may only fire on the actual transition INTO `intro arranged`.
  * A re-sent or duplicated booking webhook (Reclaim retries, a Zapier replay, a reschedule) hits
  * this endpoint again with the person already parked on `intro arranged` — counting that as a second
@@ -329,30 +353,30 @@ export async function handleBookingHook(request: Request, env: HookEnv, url: URL
 							// books through the intro link must not be dragged back to `intro arranged`.
 							const onBoard = pipeEntry?.entry_values?.mentee_stage?.[0]?.status?.title;
 							if (!onBoard) {
-								await fetch(`https://api.attio.com/v2/lists/${PIPELINE_LIST_SLUG}/entries/${pipe.entry_id}`, {
+								await attioWrite(`https://api.attio.com/v2/lists/${PIPELINE_LIST_SLUG}/entries/${pipe.entry_id}`, {
 									method: "PATCH",
 									headers,
 									body: JSON.stringify({ data: { entry_values: { mentee_stage: "intro arranged" } } }),
-								}).catch((e) => console.error("attio pipeline stage exception", String(e)));
+								}, "pipeline stage");
 							}
 						}
 					} else {
-						await fetch(`https://api.attio.com/v2/lists/${PIPELINE_LIST_SLUG}/entries`, {
+						await attioWrite(`https://api.attio.com/v2/lists/${PIPELINE_LIST_SLUG}/entries`, {
 							method: "POST",
 							headers,
 							body: JSON.stringify({
 								data: { parent_record_id: personId, parent_object: "people", entry_values: { mentee_stage: "intro arranged", added_via: "Manual", source: "booking" } },
 							}),
-						}).catch((e) => console.error("attio pipeline create exception", String(e)));
+						}, "pipeline create");
 					}
 					// "How did you hear about me?" — Reclaim passes custom question answers in the payload; keep the raw sentence.
 					const heard = extractHeardFrom(raw);
 					if (heard) {
-						await fetch(`https://api.attio.com/v2/objects/people/records/${personId}`, {
+						await attioWrite(`https://api.attio.com/v2/objects/people/records/${personId}`, {
 							method: "PATCH",
 							headers,
 							body: JSON.stringify({ data: { values: { heard_from: heard } } }),
-						}).catch(() => {});
+						}, "heard_from");
 					}
 					// GA4 server-side conversion. Joins the browser session via ga_client_id when we have it.
 					// Transition-only: a repeat webhook for someone already on Intro call fires nothing.

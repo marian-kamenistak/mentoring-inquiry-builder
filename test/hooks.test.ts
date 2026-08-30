@@ -34,7 +34,7 @@ describe("booking-hook helpers", () => {
 	it("fires call_booked only on the transition into Intro call", () => {
 		expect(shouldFireCallBooked(null)).toBe(true);
 		expect(shouldFireCallBooked(undefined)).toBe(true);
-		expect(shouldFireCallBooked(entryAtStage("lead"))).toBe(true);
+		expect(shouldFireCallBooked(entryAtStage("Not yet"))).toBe(true);
 		expect(shouldFireCallBooked(entryAtStage("intro arranged"))).toBe(false);
 		// Unknown shape (entry_values missing) fails open — better a duplicate than a lost conversion.
 		expect(shouldFireCallBooked({ entry_id: "e1" })).toBe(true);
@@ -102,7 +102,7 @@ describe("booking-hook prep email", () => {
 	it("still emails a returning person whose pipeline entry sits at an earlier stage", async () => {
 		const calls = mockFetch((u) => {
 			if (u.includes("/people/records/query")) return new Response(JSON.stringify({ data: [{ id: { record_id: "p1" }, values: {} }] }), { status: 200 });
-			if (u.includes("/entries?limit=100")) return new Response(JSON.stringify({ data: [entryAtStage("lead")] }), { status: 200 });
+			if (u.includes("/entries?limit=100")) return new Response(JSON.stringify({ data: [entryAtStage("Not yet")] }), { status: 200 });
 			return new Response("{}", { status: 200 });
 		});
 		await handleBookingHook(post({ email: "lead@corp.com" }), { BOOKING_HOOK_SECRET: SECRET, PREP_INVITE_SECRET: PREP, ATTIO_TOKEN: "t" }, url);
