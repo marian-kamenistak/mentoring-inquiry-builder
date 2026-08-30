@@ -535,12 +535,20 @@ export async function handleBookingHook(request: Request, env: HookEnv, url: URL
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({
 				text: `${isTestBooking ? `:test_tube: TEST ${kind} booking (nothing written)` : `${door.slackIcon} ${door.slackLabel}`} — *${matchedName}*${claimFromNote ? ` · claim ${claimFromNote}` : ""}${
-					locked
-						? ` · Attio entry flipped to ${door.inquiryStatus}`
-						: createdPerson
-							? ` · new Person created and added to the pipeline as ${door.stage} (booked direct, no wizard inquiry)`
-							: " · no matching Attio entry found (check manually)"
-				}${prepEmailed ? " · prep email sent" : isFirstBooking ? " · *prep email NOT sent*" : ""}${
+					// A test booking never reaches Attio, so it must not print the miss message. It used
+					// to: `locked` and `createdPerson` are both false for a SKIPPED lookup and for a genuine
+					// miss, so every probe announced "no matching Attio entry found (check manually)" — a
+					// call to action, in the one channel where that phrase otherwise means a real booking
+					// failed to land. Same for the bold "prep email NOT sent": not sending it is the
+					// CORRECT behaviour for a probe, and shouting it trains the reader to ignore the line.
+					isTestBooking
+						? " · test mode, Attio not queried"
+						: locked
+							? ` · Attio entry flipped to ${door.inquiryStatus}`
+							: createdPerson
+								? ` · new Person created and added to the pipeline as ${door.stage} (booked direct, no wizard inquiry)`
+								: " · no matching Attio entry found (check manually)"
+				}${isTestBooking ? "" : prepEmailed ? " · prep email sent" : isFirstBooking ? " · *prep email NOT sent*" : ""}${
 					// The paid door has a manual tail the free one does not: nothing in code issues an
 					// invoice. flow/offer-pdf-fakturoid.md is a runbook Marian runs by hand, and its
 					// old trigger ("after the intro call") no longer fires for these people — so the
