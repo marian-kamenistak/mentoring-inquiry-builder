@@ -86,6 +86,28 @@ export function firstTouchValues(a: Attribution): Record<string, string> {
 	return out;
 }
 
+/**
+ * Does this record already carry a first touch? Guards the write-once block above.
+ *
+ * Keyed on `first_touch_at`, NEVER on `first_touch_source`. A direct visit — address typed, untagged
+ * bookmark, an app that strips the referrer — has no source, so `touch()` leaves `src` unset and
+ * `put` skips the field entirely. That is the correct record of "direct" (`hooks.ts` reads the same
+ * absence as `"direct"` when it builds the GA4 conversion), and it is the majority shape here.
+ *
+ * Reading source as the sentinel therefore made every direct visitor look permanently
+ * un-attributed: the daily pipeline-health job alerted on two healthy bookings on 2026-08-30, and
+ * the write-once guard re-sent `firstTouchValues` on every later submission — harmless while the
+ * durable cookie survives and returns the same original, but an overwrite of the real first touch
+ * once it has lapsed or the person submits from a second device. `at` and `url` are written on every
+ * successful attribution, so `at` is present exactly when a first touch exists.
+ *
+ * Takes either shape: the flat map `firstTouchValues` returns, or an Attio `values` object.
+ */
+export function hasFirstTouch(values: any): boolean {
+	const v = values?.first_touch_at;
+	return Array.isArray(v) ? v.length > 0 : Boolean(v);
+}
+
 // Refreshed on EVERY submission, first touch or not: the click IDs an offline conversion upload
 // needs, the GA4 client id, and the last touch that actually preceded this conversion.
 export function refreshableValues(a: Attribution): Record<string, string> {

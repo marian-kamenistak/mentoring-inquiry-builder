@@ -14,7 +14,7 @@
  * /mcp/mentoring/api/verify without any datastore — the Attio entry is primary evidence,
  * the HMAC is the independent audit trail.
  */
-import { type Attribution, firstTouchValues, refreshableValues, laneFromCampaign } from "./attribution";
+import { type Attribution, firstTouchValues, refreshableValues, hasFirstTouch, laneFromCampaign } from "./attribution";
 import {
 	aiDiscount,
 	clampConcession,
@@ -290,9 +290,8 @@ export async function submitInquiry(env: SubmitEnv, input: SubmitInput): Promise
 						// Attribution from the mc_attr cookie (chat channel only — MCP clients have no cookie).
 						// First touch is written once; click ids, the GA client id and last touch describe THIS
 						// conversion and are refreshed every time.
-						const hasFirst = Array.isArray(personRec?.data?.values?.first_touch_source) && personRec.data.values.first_touch_source.length > 0;
 						const attrValues = input.attribution
-							? { ...(hasFirst ? {} : firstTouchValues(input.attribution)), ...refreshableValues(input.attribution) }
+							? { ...(hasFirstTouch(personRec?.data?.values) ? {} : firstTouchValues(input.attribution)), ...refreshableValues(input.attribution) }
 							: {};
 						if (Object.keys(attrValues).length) {
 							await fetch(`https://api.attio.com/v2/objects/people/records/${personId}`, {
