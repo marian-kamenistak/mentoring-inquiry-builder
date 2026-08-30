@@ -324,10 +324,16 @@ export async function handleBookingHook(request: Request, env: HookEnv, url: URL
 					if (pipe) {
 						// Already on Intro call → the PATCH would be a no-op write. Skip it.
 						if (isTransition) {
+							// `intro_arranged` drives the Mentoring flow kanban and Marian moves those cards by
+							// hand. Seed it only when it is still blank — someone already on `mentoring` who
+							// books through the intro link must not be dragged back to `intro arranged`.
+							const onBoard = pipeEntry?.entry_values?.intro_arranged?.[0]?.status?.title;
+							const values: Record<string, string> = { stage: "Intro call" };
+							if (!onBoard) values.intro_arranged = "intro arranged";
 							await fetch(`https://api.attio.com/v2/lists/${PIPELINE_LIST_SLUG}/entries/${pipe.entry_id}`, {
 								method: "PATCH",
 								headers,
-								body: JSON.stringify({ data: { entry_values: { stage: "Intro call" } } }),
+								body: JSON.stringify({ data: { entry_values: values } }),
 							}).catch((e) => console.error("attio pipeline stage exception", String(e)));
 						}
 					} else {
@@ -335,7 +341,7 @@ export async function handleBookingHook(request: Request, env: HookEnv, url: URL
 							method: "POST",
 							headers,
 							body: JSON.stringify({
-								data: { parent_record_id: personId, parent_object: "people", entry_values: { stage: "Intro call", added_via: "Manual", source: "booking" } },
+								data: { parent_record_id: personId, parent_object: "people", entry_values: { stage: "Intro call", intro_arranged: "intro arranged", added_via: "Manual", source: "booking" } },
 							}),
 						}).catch((e) => console.error("attio pipeline create exception", String(e)));
 					}
