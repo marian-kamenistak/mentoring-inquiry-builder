@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { isCancellationPayload, ga4CallBookedBody, extractHeardFrom, shouldFireCallBooked, handleBookingHook, extractAttendeeName, formatMeetingWhen } from "../src/hooks";
 
-// Shape of a real Attio list-entry read. `intro_arranged` ("Mentee stage") is a STATUS-type
+// Shape of a real Attio list-entry read. `mentee_stage` ("Mentee stage") is a STATUS-type
 // attribute, so its value nests under .status.title — a select would nest under .option.title.
 const entryAtStage = (title: string) => ({
 	entry_id: "e1",
 	list_api_slug: "mentoring_pipeline",
-	entry_values: { intro_arranged: [{ status: { title } }] },
+	entry_values: { mentee_stage: [{ status: { title } }] },
 });
 
 describe("booking-hook helpers", () => {
