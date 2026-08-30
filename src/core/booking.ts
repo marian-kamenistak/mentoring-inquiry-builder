@@ -99,7 +99,7 @@ export function firstSessionEligible(offerId: string, opts: { freeSessionsPropos
  *
  * Reclaim forwards up to five `data-`-prefixed query params from the booking URL into the signed
  * webhook payload as `custom_data.data.<key>`, prefix stripped
- * (help.reclaim.ai/en/articles/10008727). So `?data-claim=AI16-…` gives the hook a deterministic
+ * (help.reclaim.ai/en/articles/10008727). So `?data-claim=AI10-…` gives the hook a deterministic
  * join instead of scanning a free-text booking note for a code the prospect has to remember to
  * paste — which is what the intro hook has always depended on, and the reason bookings made with
  * a different address than the offer went unmatched.

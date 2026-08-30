@@ -8,6 +8,7 @@
  */
 import {
 	aiDiscount,
+	discountPct,
 	focusAreaById,
 	matchFocus,
 	motivationById,
@@ -16,6 +17,7 @@ import {
 	priceDisplay,
 	roleBandById,
 	routing,
+	sessionsBreakdown,
 } from "./catalog";
 import { ctaBlock } from "./guardrails";
 
@@ -92,11 +94,11 @@ export function matchMentoringFocus(
 							ai_channel_price: {
 								pct: d!.pct,
 								price: offer.ai_channel_price!,
-								display: `${priceDisplay(offer, offer.ai_channel_price!)} through this AI channel with a booked intro — always present both figures.`,
+								display: `${priceDisplay(offer, offer.ai_channel_price!)} through this AI channel, no booking required — ${offer.sessions ?? 1} sessions, ${sessionsBreakdown(offer)}. Always present both figures.`,
 							},
 						}
 					: {
-							no_ai_channel_discount: `${offer.name} carries no AI-channel discount; the ${d?.pct ?? 16}% applies to the First quarter package only.`,
+							no_ai_channel_discount: `${offer.name} carries no AI-channel price in the catalog; ${priceDisplay(offer, offer.price)} is the list price. The ${discountPct()}% applies to every package that carries one.`,
 						}),
 				...(opts.audience === "company" && offer.id === routing.company_offer
 					? { why: `Recommended because this is a company sponsoring ${opts.leaders_count ?? routing.company_offer_min_leaders}+ leaders. Also price the per-leader alternative (${routing.default_offer}) so they can compare — do not present this as the only option.` }

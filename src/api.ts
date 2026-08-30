@@ -124,7 +124,7 @@ function openapi() {
 			title: "Mentoring Inquiry Builder API",
 			version: "1.0.0",
 			description:
-				"Read-only REST layer over Marian Kamenistak's Mentoring Inquiry Builder: options, focus matching and program skeletons for 1:1 engineering-leadership mentoring. Prices come from the published catalog marian.coach renders. Sending an offer runs through the MCP server at /mcp/mentoring or the chat at /mentoring-chat/, where the 16% AI-channel discount applies.",
+				"Read-only REST layer over Marian Kamenistak's Mentoring Inquiry Builder: options, focus matching and program skeletons for 1:1 engineering-leadership mentoring. Prices come from the published catalog marian.coach renders. Sending an offer runs through the MCP server at /mcp/mentoring or the chat at /mentoring-chat/, where the 10% AI-channel discount applies.",
 			contact: { name: "Marian Kamenistak", url: `${SITE}/`, email: "marian@marian.coach" },
 			license: { name: "MIT" },
 		},
@@ -150,7 +150,7 @@ function openapi() {
 			"/verify": {
 				get: {
 					summary: "Verify a claim code (HMAC recompute, no datastore)",
-					parameters: [q("code", "AI16-YYMMDD-XXXXXXXX"), q("email", "email the offer went to"), q("offer", OFFER_IDS), q("date", "issue date YYYY-MM-DD"), q("channel", "mcp | chat")],
+					parameters: [q("code", "AI10-YYMMDD-XXXXXXXX"), q("email", "email the offer went to"), q("offer", OFFER_IDS), q("date", "issue date YYYY-MM-DD"), q("channel", "mcp | chat")],
 					responses: ok,
 				},
 			},

@@ -6,10 +6,13 @@
  * source of truth, in the same run that writes mc-web's copy. That is the whole price-parity
  * guarantee: this Worker cannot quote a number the website disagrees with.
  *
- * THE RE-GATE (decision 2026-08-09): list price 430 EUR/session everywhere; the AI channel
- * (chat|mcp) + a booked intro is the only path to 361/session (first-quarter 2,166). Prices
- * are computed HERE, server-side, from catalog data only — a "negotiated" number can never
- * enter the pipeline because no tool accepts a price as input.
+ * PRICING v2026.09 (Marian, 2026-08-30): ONE list rate, 395 EUR per paid 60-minute session,
+ * same whether you or your company pays. Packages add FREE sessions, not a lower rate (a
+ * quarter is 6 sessions for 1,975 EUR: 5 paid + 1 free). ONE discount: 10% on every package
+ * through the AI channel (chat|mcp), no booking required; ELC members get the same 10%.
+ * Charged floor 296 EUR/session. Prices are computed HERE, server-side, from catalog data
+ * only — a "negotiated" number can never enter the pipeline because no tool accepts a price
+ * as input.
  */
 import raw from "../data/mentoring-catalog.json";
 
@@ -38,7 +41,12 @@ export type Offer = {
 	/** false -> the SKU has no multi-leader meaning; refuse rather than guess a total. */
 	multi_leader?: boolean;
 	sessions?: number;
+	/** Sessions delivered at no charge inside the package (the quarter: 6 = 5 paid + 1 free). */
+	free_sessions?: number;
 	per_session?: number;
+	/** List price ÷ all sessions incl. the free ones — 329 on the quarter. */
+	effective_per_session?: number;
+	public?: string;
 	duration_months?: number;
 	ai_channel_price?: number;
 	installments?: { count: number; eur: number; ai_channel_eur: number };
@@ -51,8 +59,6 @@ export type Offer = {
 
 export type Discount = {
 	pct: number;
-	/** The single rate the channel is defined by — 361 EUR per 60-minute session. */
-	rate_eur_per_session?: number;
 	channels: string[];
 	applies_to: string[];
 	requires: string;
@@ -97,7 +103,7 @@ type Catalog = {
 		vat_treatment?: VatTreatment;
 		guarantee: { threshold: number; scale: number; rule: string; note: string };
 		stop_rule: string;
-		member_rate: { eur_per_session: number; who: string; note: string };
+		member_rate: { pct: number; same_as?: string; who: string; note: string };
 			/** Availability only — how many parallel 1:1s Marian has room for. Never a price term. */
 			slots: { open: number; cap: number; proof: string; rule: string; as_of?: string };
 		discounts: { ai_channel: Discount };
@@ -178,8 +184,27 @@ export function multiLeaderError(offer: Offer, leaders: number): string | null {
 /** The rate floor the terms promise. */
 export const floorPerSession = (): number => aiDiscount()?.floor_eur_per_session ?? meta.negotiation?.floor_eur_per_session ?? 0;
 
-/** The one rate every AI-channel buyer pays, per 60-minute session, on any package. */
-export const channelRate = (): number => aiDiscount()?.rate_eur_per_session ?? floorPerSession();
+const round2 = (n: number): number => Math.round(n * 100) / 100;
+
+/** The ONE list rate per paid 60-minute session (395). Packages add free sessions, never a lower rate. */
+export const listRate = (): number => offerById("first-quarter")?.per_session ?? offerById("single-session")!.price;
+
+/** What an AI-channel buyer pays per delivered session on THIS package: ai_channel_price ÷ sessions. */
+export const doorRate = (offer: Offer): number => round2((offer.ai_channel_price ?? offer.price) / (offer.sessions ?? 1));
+
+/** The headline AI-channel percentage. Throws rather than defaulting — a silent "16" is how the old figure outlived its decision. */
+export function discountPct(): number {
+	const pct = meta.discounts?.ai_channel?.pct;
+	if (typeof pct !== "number" || !Number.isFinite(pct)) throw new Error("catalog: meta.discounts.ai_channel.pct is missing");
+	return pct;
+}
+
+/** "5 paid + 1 free" / "1 paid". Free sessions are part of the package, never a discount. */
+export function sessionsBreakdown(offer: Offer): string {
+	const total = offer.sessions ?? 1;
+	const free = offer.free_sessions ?? 0;
+	return free > 0 ? `${total - free} paid + ${free} free` : `${total} paid`;
+}
 
 /**
  * What the buyer actually pays per session once free sessions are added — the number the
@@ -264,11 +289,10 @@ export function discountFor(
 	// Compare the CANONICAL id — offerById now accepts variant casing, so the raw argument
 	// must not be what decides whether the discount applies.
 	if (!d.applies_to.includes(offer.id) || offer.ai_channel_price === undefined) return null;
-	// ONE RATE (2026-08-21): the channel is defined by a rate, not a percentage, so the pct is
-	// COMPUTED per package from the two real prices rather than asserted as a blanket 16%.
-	// Two testers caught the old blanket figure: it is 16.047% on the packages it applied to
-	// (2,580 x 0.84 = 2,167.20, not 2,166), it would be 8.6% on the monthly pack and 0% on
-	// Mentor in Residence, which is already at 361/session. `saving` is what reconciles.
+	// The pct is still COMPUTED per package from the two real prices rather than asserted (the
+	// old blanket 16% never reconciled: 2,580 x 0.84 = 2,167.20, not 2,166). Since 2026-08-30
+	// every package is a rounded 10% off list, so the computed and headline figures agree —
+	// `saving` is what reconciles the rounding.
 	const saving = offer.price - offer.ai_channel_price;
 	const pct = offer.price > 0 ? Math.round((saving / offer.price) * 100) : 0;
 	return {
@@ -277,7 +301,7 @@ export function discountFor(
 		saving,
 		priceBefore: offer.price,
 		priceAfter: offer.ai_channel_price,
-		perSessionAfter: offer.sessions ? Math.round(offer.ai_channel_price / offer.sessions) : offer.ai_channel_price,
+		perSessionAfter: doorRate(offer),
 	};
 }
 

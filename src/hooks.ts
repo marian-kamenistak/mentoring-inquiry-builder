@@ -308,9 +308,10 @@ export async function handleBookingHook(request: Request, env: HookEnv, url: URL
 	//   2. the free-text booking note — the intro door's original mechanism, kept because the
 	//      `data-` shape is UNVERIFIED on api_version v2026-04-13 (the payload captured in
 	//      reclaim-webhook.md predates it) and because a booker can still paste a code by hand.
-	// Both are validated against the same AI16 pattern; a malformed custom_data value falls
+	// Both are validated against the same claim pattern (AI10- since 2026-08-30; AI16- codes
+	// issued before are still valid for their 30 days); a malformed custom_data value falls
 	// through to the note rather than poisoning the lookup.
-	const claimRe = /AI16-\d{6}-[0-9A-F]{8}/i;
+	const claimRe = /AI\d{1,2}-\d{6}-[0-9A-F]{8}/i;
 	const claimFromData = (() => {
 		const v = body?.meeting?.custom_data?.data?.claim;
 		return typeof v === "string" && claimRe.test(v) ? v.match(claimRe)![0].toUpperCase() : null;
@@ -371,8 +372,9 @@ export async function handleBookingHook(request: Request, env: HookEnv, url: URL
 				// without ever touching the wizard or a form is not an Attio Person yet. Until this
 				// block existed the lookup simply missed and everything below no-opped in silence:
 				// no `mentoring_pipeline` row, so the intro never entered the funnel, and no GA4
-				// `call_booked` — which is the PRIMARY Google Ads conversion (361 EUR in
-				// google-ads-setup.md). Booking-direct is the most common path for paid traffic, so
+				// `call_booked` — which is the PRIMARY Google Ads conversion (296 EUR since the
+				// 2026-08-30 repricing; the value is set in the Google Ads UI per
+				// google-ads-setup.md, not sent from here). Booking-direct is the most common path for paid traffic, so
 				// that was the campaign quietly under-reporting its only real outcome.
 				// Assert (PUT + matching_attribute) rather than POST: race-safe if two hooks land at
 				// once, and it returns the existing record instead of a duplicate.

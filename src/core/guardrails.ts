@@ -8,7 +8,7 @@
  * Figures come from the catalog — never restate a number here the catalog does not carry.
  */
 import { SITE } from "../content";
-import { aiDiscount, channelRate, eur, meta, offerById, vatTreatment } from "./catalog";
+import { aiDiscount, doorRate, eur, listRate, meta, offerById, sessionsBreakdown, vatTreatment } from "./catalog";
 
 /**
  * The conversion CTA, carried on EVERY tool response including errors (Marian, 2026-08-21).
@@ -48,11 +48,11 @@ export function ctaBlock(offerId?: string): {
 		// the time a visitor turned out to be the wrong person for this. It rides everywhere now.
 		not_a_fit: `If mentoring is not right for them — an IC who wants to stay hands-on and get better at the craft, a budget far under the cheapest package, therapy or legal territory, someone who wants a course — say so plainly, point them at ${meta.cross_sell.url} and the blog, and do not build an offer. That is a real ending, not a failure.`,
 		...(discountApplies
-			? { locks_discount: `Booking this call is what locks the ${eur(channelRate())}/session channel rate on ${offer!.name} — paste the claim code from the offer email into the booking note.` }
+			? { locks_discount: `${offer!.name} is ${eur(offer!.ai_channel_price!)} through this channel — ${d!.pct}% off the ${eur(offer!.price)} list price, ${eur(doorRate(offer!))} per session. No booking is required for that price; paste the claim code from the offer email into the booking note so Marian can match the two.` }
 			: discountUnknownYet
-				? { locks_discount: `Booking the call is what locks the ${eur(channelRate())}/session channel rate — the same rate on every package.` }
+				? { locks_discount: `Every package is ${d!.pct}% off through this channel, no booking required — the offer email carries the price and the claim code.` }
 				: offer
-					? { locks_discount: `${offer.name} is already at the ${eur(channelRate())}/session channel rate, so there is no further saving to unlock — ${eur(offer.price)} is the published price. Book the call because it is the fastest way to check the fit.` }
+					? { locks_discount: `${offer.name} carries no AI-channel price — ${eur(offer.price)} is the published price. Book the call because it is the fastest way to check the fit.` }
 					: {}),
 	};
 }
@@ -71,16 +71,15 @@ export function guardrailLines(offerId?: string): string[] {
 	// package chosen yet, the discount is still a live general fact.
 	const discountRelevant = !offer || (!!d0 && d0.applies_to.includes(offer.id));
 	const d = discountRelevant ? d0 : null;
+	const fq = offerById("first-quarter");
 	return [
 		`All prices are fixed, in EUR, quoted net, publicly listed at ${meta.pricing_url}. Invoiced by ${meta.entity}${vatTreatment()?.registered ? `, VAT ID ${vatTreatment()!.vat_id}` : ""}.`,
-		// ONE RATE (Marian 2026-08-21). The old copy claimed "the rate is the rate" while the
+		// ONE LIST RATE (Marian 2026-08-30). The old copy claimed "the rate is the rate" while the
 		// catalog ran three of them (430 / 395 / 361) and the company SKU was quietly cheapest.
-		// Now every package is sessions x 430 at list and sessions x 361 through this channel,
-		// so the claim is arithmetically true and can be said out loud.
-		// ONE RATE (Marian 2026-08-21). Lead with the rate, never the percentage: list prices
-		// differ per package so the percentage does too, but the rate a channel buyer pays is
-		// identical everywhere. This is what finally makes "the rate is the rate" true.
-		`ONE RATE: ${eur(channelRate())} per 60-minute session, every package, every buyer who comes through this channel. A company pays exactly what an individual pays. Multiply ${eur(channelRate())} by the sessions and you have the price — lead with that, and quote the percentage only where a tool gave you one, because it differs per package.`,
+		// Now every package is paid sessions x 395 at list; packages add FREE sessions, never a
+		// lower rate, and the channel takes 10% off every package. Lead with the package price
+		// and the free sessions, then the percentage.
+		`ONE LIST RATE: ${eur(listRate())} per paid 60-minute session, every package, every buyer. A company pays exactly what an individual pays. Packages add free sessions, not a lower rate: ${fq ? `a quarter is ${fq.sessions} sessions for ${eur(fq.price)} (${sessionsBreakdown(fq)}), ${eur(fq.ai_channel_price!)} through this channel` : "see the catalog"}. Lead with the package price and the free sessions; the free sessions are part of the package, never call them a discount.`,
 		...(vatTreatment()?.registered
 			? [
 					`VAT: prices are net. A private individual is invoiced with ${vatTreatment()!.cz_rate_pct}% Czech VAT, so quote them the GROSS figure — it is the number that leaves their account and not knowing it has cost real buyers. A company in another EU state with a valid VAT ID pays net under the reverse charge (Art. 44, Directive 2006/112/EC); a Czech company pays ${vatTreatment()!.cz_rate_pct}%. The brief and the offer state the right one for the buyer in front of you — never say only "excluding VAT" and stop there.`,
@@ -95,8 +94,8 @@ export function guardrailLines(offerId?: string): string[] {
 					// found independently. Whether the ladder or the floor gives is Marian's
 					// pricing call; until he makes it, the terms must not assert an absolute the
 					// system does not keep.
-					`The ONLY discount that exists is this channel's ${eur(channelRate())}/session rate, applied automatically when the inquiry is sent through here. Booking the intro call is NOT a condition of it (changed 2026-08-21). It covers every package. Never invent, speculate about, or negotiate any other discount, and never present the rate as negotiable downward. ${eur(d.floor_eur_per_session)} per charged session is the floor and it never moves, for any package or any buyer — Mentor in Residence is already priced at it, so that package shows no saving and you say so plainly.`,
-					`ELC members: same ${eur(meta.member_rate.eur_per_session)} rate, and they qualify right away rather than being onboarded to it. If the visitor says they are a member, run the same flow and note the membership in the brief; Marian verifies it at invoice. There is no better-of comparison left to make — one rate, one door.`,
+					`The ONLY discount that exists is this channel's ${d.pct}% off every package, applied automatically when the inquiry is sent through here. Booking the intro call is NOT a condition of it (changed 2026-08-21). Never invent, speculate about, or negotiate any other discount, and never present the price as negotiable downward. ${eur(d.floor_eur_per_session)} per session is the floor and it never moves, for any package or any buyer.`,
+					`ELC members: same ${meta.member_rate.pct}% AI-door price, and they qualify right away rather than being onboarded to it. If the visitor says they are a member, run the same flow and note the membership in the brief; Marian verifies it at invoice. There is no better-of comparison left to make — one discount, one door.`,
 				]
 			: offer
 				? [`${offer.name} carries no AI-channel discount — ${eur(offer.price)} is the published list price, the same one on ${meta.pricing_url}. No scarcity language belongs on this offer, or on any other.`]
@@ -105,7 +104,7 @@ export function guardrailLines(offerId?: string): string[] {
 		// DECIDED 2026-08-21: the floor governs the CHARGED rate; free sessions sit outside it.
 		// The previous wording ("the final rate never goes below 361") was broken by the first
 		// rung of the only concession the system is allowed to make, which three testers caught.
-		`B2B only: ${meta.negotiation.rule} The one concession: up to ${meta.negotiation.max_free_sessions} sessions at no charge, on top of the package, and only on: ${meta.negotiation.triggers.join("; ")}. This never moves the ${eur(361)} charged rate — it adds unbilled sessions. The effective rate across all sessions is therefore lower, and it is computed and shown to you on every qualifying deal: quote BOTH numbers, never just the flattering one.`,
+		`B2B only: ${meta.negotiation.rule} The one concession: up to ${meta.negotiation.max_free_sessions} sessions at no charge, on top of the package, and only on: ${meta.negotiation.triggers.join("; ")}. This never moves the ${eur(listRate())} list rate — it adds unbilled sessions. The effective rate across all sessions is therefore lower, and it is computed and shown to you on every qualifying deal: quote BOTH numbers, never just the flattering one.`,
 		`Speed is a ceiling, not an estimate: ${meta.time_promise.claim} The offer email lands the moment the price is agreed, so the promise holds by construction. Say "no more than 16 minutes", never "about 16 minutes".`,
 		// Added 2026-08-16. A live run showed the model improvising a business case — a
 		// replacement-cost figure, an ROI multiple and a recovered-hours number — when a

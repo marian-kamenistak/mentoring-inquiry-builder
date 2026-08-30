@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { mintSession, verifySession } from "../src/chat";
+import { aiDiscount } from "../src/core/catalog";
 import { claimCode } from "../src/core/submit";
 
 describe("chat session tokens", () => {
@@ -24,7 +25,7 @@ describe("claim codes", () => {
 		const a = await claimCode("k", "a@b.com", "first-quarter", "mcp", d);
 		const b = await claimCode("k", "a@b.com", "first-quarter", "mcp", d);
 		expect(a).toBe(b);
-		expect(a).toMatch(/^AI16-260901-[0-9A-F]{8}$/);
+		expect(a).toMatch(new RegExp(`^AI${aiDiscount()!.pct}-260901-[0-9A-F]{8}$`));
 		expect(await claimCode("k", "x@b.com", "first-quarter", "mcp", d)).not.toBe(a);
 		expect(await claimCode("k", "a@b.com", "first-quarter", "chat", d)).not.toBe(a);
 		expect(await claimCode("other", "a@b.com", "first-quarter", "mcp", d)).not.toBe(a);

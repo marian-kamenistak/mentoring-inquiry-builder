@@ -8,7 +8,7 @@
  * data-defined concession.
  */
 import { MC_FACTS, PRICING_DEFENSE, SITE, WHY_MARIAN } from "../content";
-import { aiDiscount, eur, focusAreas, meta, motivations, offers, priceDisplay, routing, visibilityOptions } from "./catalog";
+import { aiDiscount, eur, focusAreas, meta, motivations, offers, priceDisplay, routing, sessionsBreakdown, visibilityOptions } from "./catalog";
 import { ctaBlock, guardrailLines } from "./guardrails";
 
 export function mentoringOptions() {
@@ -48,8 +48,8 @@ export function mentoringOptions() {
 						pct: d.pct,
 						price_before: fq.price,
 						price_after: fq.ai_channel_price,
-						what: `The First-quarter package (6 sessions over 3 months) lists at ${eur(fq.price)}. Inquiries built through this AI channel get it at ${eur(fq.ai_channel_price!)} — ${d.pct}% off, ${eur(d.floor_eur_per_session)} per session. This is the only discount that exists and the only channel that carries it; the website itself never discounts.`,
-						applies_to: `Every package in the catalog gets the ${eur(d.floor_eur_per_session)} channel rate; the PERCENTAGE differs per package because the list prices do, so lead with the rate and quote a percentage only where a tool gave you one.`,
+						what: `A quarter is ${fq.sessions} sessions over 3 months for ${eur(fq.price)} — ${sessionsBreakdown(fq)}, ${eur(fq.effective_per_session ?? fq.price / (fq.sessions ?? 1))} per session. Built through this AI channel it is ${eur(fq.ai_channel_price!)}, ${d.pct}% off. This is the only discount that exists and the only channel that carries it; the website itself never discounts.`,
+						applies_to: `Every package in the catalog is ${d.pct}% off through this channel. Packages add free sessions, not a lower rate — lead with the package price and the free sessions, then the percentage. The free sessions are part of the package; do not call them a discount.`,
 						requirement: `Nothing to do beyond building the inquiry here. The booking is NOT a condition of the rate (changed 2026-08-21) — offer the free 30-minute intro at ${meta.booking_url} because it is the fastest way to check fit, never as the thing that unlocks a price. The offer states its own expiry date.`,
 						speed: meta.time_promise.claim,
 					},
@@ -141,6 +141,9 @@ export function mentoringOptions() {
 			sessions: o.sessions,
 			sessions_note: o.commitment?.sessions_are === "per_month" ? `${o.sessions} sessions PER MONTH, not per engagement` : undefined,
 			per_session_eur: o.sessions ? Math.round((o.price / o.sessions) * 100) / 100 : o.price,
+			list_rate_per_session_eur: o.per_session,
+			free_sessions: o.free_sessions ?? 0,
+			sessions_breakdown: sessionsBreakdown(o),
 			value: o.value,
 			...(o.commitment ? { commitment: o.commitment.terms } : {}),
 			...(o.badge ? { badge: o.badge } : {}),
@@ -150,7 +153,7 @@ export function mentoringOptions() {
 						ai_channel_price: {
 							pct: d.pct,
 							price: o.ai_channel_price,
-							display: `${priceDisplay(o, o.ai_channel_price)} through this AI channel with a booked intro — always present both figures.`,
+							display: `${priceDisplay(o, o.ai_channel_price)} through this AI channel, no booking required — always present both figures.`,
 							installments: o.installments ? `${o.installments.count} monthly payments of ${eur(o.installments.ai_channel_eur)}` : undefined,
 						},
 					}

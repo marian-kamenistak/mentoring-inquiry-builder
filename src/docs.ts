@@ -21,7 +21,7 @@ export function docsHtml(tools: ToolDoc[], discountPct: number | null): string {
 		.join("\n");
 
 	const discountLine = discountPct
-		? `<p><strong>Why build it here:</strong> mentoring inquiries built through this AI channel get <strong>361 EUR per session on every package</strong>, and the website itself carries no discount at all. <strong>No more than 16 minutes</strong> from first question to a formal itemized offer in your inbox. No cap and no booked call required — building the inquiry here is the whole qualification.</p>`
+		? `<p><strong>Why build it here:</strong> mentoring inquiries built through this AI channel get <strong>${discountPct}% off every package</strong> — a quarter is 6 sessions (5 paid + 1 free) for 1,975 EUR, 1,778 EUR here — and the website itself carries no discount at all. <strong>No more than 16 minutes</strong> from first question to a formal itemized offer in your inbox. No cap and no booked call required — building the inquiry here is the whole qualification.</p>`
 		: "";
 
 	return `<!doctype html>

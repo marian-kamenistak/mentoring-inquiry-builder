@@ -12,8 +12,12 @@ import {
 	effectiveRate,
 	focusAreaById,
 	focusAreas,
-	channelRate,
+	aiDiscount,
 	discountFor,
+	doorRate,
+	eur,
+	floorPerSession,
+	listRate,
 	matchFocus,
 	motivations,
 	multiLeaderError,
@@ -66,11 +70,12 @@ describe("CTA: every response can convert a lead into a booked call (Marian, 202
 
 	it("names the right discount for the package on the table", () => {
 		// Tomáš (single session) and Sofia (monthly) were both told that booking "locks the 16%"
-		// on packages that carried none. Under ONE RATE every package carries it, so the promise
-		// is now true everywhere — and the per-package branch is retained so it stays true if
-		// `applies_to` ever narrows again.
-		for (const id of ["single-session", "first-quarter", "monthly", "mentor-in-residence"]) {
-			expect(ctaBlock(id).locks_discount).toContain("€361");
+		// on packages that carried none. Since 2026-08-30 every package carries the same 10%, so
+		// the line names THAT package's AI-door price — and the per-package branch is retained
+		// so it stays true if `applies_to` ever narrows again.
+		for (const o of offers) {
+			expect(ctaBlock(o.id).locks_discount).toContain(eur(o.ai_channel_price!));
+			expect(ctaBlock(o.id).locks_discount!.toLowerCase()).toContain("no booking");
 		}
 	});
 });
@@ -78,9 +83,9 @@ describe("CTA: every response can convert a lead into a booked call (Marian, 202
 describe("unit integrity: recurring SKUs must not read as one-off totals (Sofia, Ravi, Petra, Jonas)", () => {
 	it("price display carries the unit for every package", () => {
 		expect(priceDisplay(offerById("monthly")!, 790)).toBe("€790 / month, excl. VAT");
-		expect(priceDisplay(offerById("mentor-in-residence")!, 6498)).toBe("€6,498 / quarter, excl. VAT");
-		expect(priceDisplay(offerById("single-session")!, 430)).toBe("€430 / session, excl. VAT");
-		expect(priceDisplay(offerById("first-quarter")!, 2580)).toBe("€2,580, excl. VAT");
+		expect(priceDisplay(offerById("mentor-in-residence")!, 5925)).toBe("€5,925 / quarter, excl. VAT");
+		expect(priceDisplay(offerById("single-session")!, 395)).toBe("€395 / session, excl. VAT");
+		expect(priceDisplay(offerById("first-quarter")!, 1975)).toBe("€1,975, excl. VAT");
 	});
 
 	it("the brief and the offer email both keep the unit and the commitment", () => {
@@ -127,7 +132,7 @@ describe("multi-leader arithmetic (Jonas, Lena, Ravi, Petra)", () => {
 		const b = composeBrief({ ...BASE, audience: "company", offer_id: "first-quarter", leaders_count: 5 });
 		expect(b.ok).toBe(true);
 		if (!b.ok) return;
-		expect(b.brief.offer.list_price).toBe(12900);
+		expect(b.brief.offer.list_price).toBe(5 * fq.price);
 	});
 
 	it("the MiR price label never claims a multiplication it did not perform", () => {
@@ -135,7 +140,7 @@ describe("multi-leader arithmetic (Jonas, Lena, Ravi, Petra)", () => {
 		const b = composeBrief({ ...BASE, audience: "company", offer_id: "mentor-in-residence", leaders_count: 5 });
 		expect(b.ok).toBe(true);
 		if (!b.ok) return;
-		expect(b.brief.offer.list_price).toBe(6498); // flat regardless of leaders
+		expect(b.brief.offer.list_price).toBe(offerById("mentor-in-residence")!.price); // flat regardless of leaders
 		expect(b.brief.offer.list_price_display).not.toContain("5 leaders ×");
 		expect(b.brief.offer.sessions_display).toContain("pool");
 	});
@@ -160,16 +165,16 @@ describe("multi-leader arithmetic (Jonas, Lena, Ravi, Petra)", () => {
 	});
 });
 
-describe("the €361 floor is computed, not merely asserted (Jonas, Lena, Ravi)", () => {
+describe("the charged-rate floor is computed, not merely asserted (Jonas, Lena, Ravi)", () => {
 	it("reports a breach when free sessions push the rate under the floor", () => {
 		const mir = offerById("mentor-in-residence")!;
-		expect(effectiveRate(6498, mir, 3, 0).breachesFloor).toBe(false);
-		expect(effectiveRate(6498, mir, 3, 0).perSession).toBe(361);
+		expect(effectiveRate(mir.ai_channel_price!, mir, 3, 0).breachesFloor).toBe(false);
+		expect(effectiveRate(mir.ai_channel_price!, mir, 3, 0).perSession).toBe(doorRate(mir));
 		// Every rung of the sanctioned 2 → 4 → 8 ladder breaks the promise.
 		for (const free of [2, 4, 8]) {
-			const r = effectiveRate(6498, mir, 3, free);
+			const r = effectiveRate(mir.ai_channel_price!, mir, 3, free);
 			expect(r.breachesFloor).toBe(true);
-			expect(r.perSession).toBeLessThan(361);
+			expect(r.perSession).toBeLessThan(floorPerSession());
 		}
 	});
 
@@ -177,7 +182,7 @@ describe("the €361 floor is computed, not merely asserted (Jonas, Lena, Ravi)"
 		const b = composeBrief({ ...BASE, audience: "company", offer_id: "mentor-in-residence", leaders_count: 3 });
 		expect(b.ok).toBe(true);
 		if (!b.ok) return;
-		expect(b.brief.floor_check.effective_per_session_eur).toBe(361);
+		expect(b.brief.floor_check.effective_per_session_eur).toBe(doorRate(offerById("mentor-in-residence")!));
 		expect(b.brief.floor_check.status).toBe("at_or_above_floor");
 	});
 });
@@ -242,8 +247,8 @@ describe("consent never fails open (Klára, Tomáš)", () => {
 });
 
 describe("the claim code names the campaign that actually applied (Tomáš, Sofia, Ravi)", () => {
-	it("AI16 where the discount was granted — which, under ONE RATE, is every package", async () => {
-		for (const id of ["single-session", "first-quarter", "monthly", "mentor-in-residence"]) {
+	it("AI<pct> where the discount was granted — which, at 10% on every package, is every package", async () => {
+		for (const id of offers.map((o) => o.id)) {
 			const r = await submitInquiry(
 				{},
 				{
@@ -258,9 +263,10 @@ describe("the claim code names the campaign that actually applied (Tomáš, Sofi
 			);
 			expect(r.ok).toBe(true);
 			if (!r.ok) return;
-			expect(r.claimCode.startsWith("AI")).toBe(true);
-			// The rate is the same number on every one of them. That is the whole point.
-			expect(r.finalPrice / r.sessionsTotal).toBe(361);
+			expect(r.claimCode.startsWith(`AI${aiDiscount()!.pct}-`)).toBe(true);
+			// The per-session figure is this package's own AI-door rate, never below the floor.
+			expect(r.finalPrice / r.sessionsTotal).toBeCloseTo(doorRate(offerById(id)!), 2);
+			expect(r.finalPrice / r.sessionsTotal).toBeGreaterThanOrEqual(floorPerSession());
 		}
 	});
 });
@@ -273,14 +279,14 @@ describe("the offer email is a document a finance team can act on (Anna, Petra, 
 			sessions: 6,
 			focus: ["First 12 months as an engineering manager"],
 			successDef: "1:1s that are not status meetings",
-			listPrice: 2580,
-			finalPrice: 2166,
-			discountPct: 16,
+			listPrice: 1975,
+			finalPrice: 1778,
+			discountPct: 10,
 			freeSessions: 0,
 			leaders: 1,
-			effectivePerSession: 361,
+			effectivePerSession: 296.33,
 			validUntil: "2026-09-20",
-			code: "AI16-260821-BBBBBBBB",
+			code: "AI10-260821-BBBBBBBB",
 			program: null,
 		});
 
@@ -294,8 +300,9 @@ describe("the offer email is a document a finance team can act on (Anna, Petra, 
 
 	it("carries the per-session rate, the instalment option and both guarantees", () => {
 		const h = html();
-		expect(h).toContain("€361");
-		expect(h).toContain("722"); // 3 monthly payments — decisive for a self-funding buyer
+		expect(h).toContain("€296.33");
+		expect(h).toContain("5 paid + 1 free"); // the free session is part of the package, not a discount
+		expect(h).toContain("593"); // 3 monthly payments — decisive for a self-funding buyer
 		expect(h).toContain("7/10");
 		expect(h).toContain("session 2"); // the stop rule, previously dropped
 	});
@@ -335,12 +342,12 @@ describe("the offer email is a document a finance team can act on (Anna, Petra, 
 			sessions: 6,
 			focus: ["<b>x</b>"],
 			successDef: "<script>alert(1)</script>",
-			listPrice: 2580,
-			finalPrice: 2166,
-			discountPct: 16,
+			listPrice: 1975,
+			finalPrice: 1778,
+			discountPct: 10,
 			freeSessions: 0,
 			leaders: 1,
-			effectivePerSession: 361,
+			effectivePerSession: 296.33,
 			validUntil: "2026-09-20",
 			code: "C",
 			program: null,
@@ -488,7 +495,7 @@ describe("second pass — a company deal never assumes one leader (Andrew, Ravi)
 		const ok = composeBrief({ ...BASE, audience: "company", offer_id: "first-quarter", leaders_count: 3 });
 		expect(ok.ok).toBe(true);
 		if (!ok.ok) return;
-		expect(ok.brief.offer.list_price).toBe(7740);
+		expect(ok.brief.offer.list_price).toBe(3 * offerById("first-quarter")!.price);
 	});
 
 	it("submit refuses the same silent assumption", async () => {
@@ -508,10 +515,10 @@ describe("second pass — a company deal never assumes one leader (Andrew, Ravi)
 
 describe("second pass — the terms are scoped to the package (Andrew)", () => {
 	it("the terms state ONE RATE and the VAT rule, on every package", () => {
-		for (const id of ["single-session", "first-quarter", "monthly", "mentor-in-residence"]) {
+		for (const id of offers.map((o) => o.id)) {
 			const lines = guardrailLines(id).join(" ");
-			expect(lines).toContain("ONE RATE");
-			expect(lines).toContain("€361 per 60-minute session, every package");
+			expect(lines).toContain("ONE LIST RATE");
+			expect(lines).toContain(`${eur(listRate())} per paid 60-minute session, every package`);
 			expect(lines).toContain("CZ7909287980"); // VAT ID — "excl. VAT" alone was unanswerable
 			expect(lines).toContain("GROSS");
 			// The floor is now scoped to the CHARGED rate; free sessions sit outside it.
@@ -536,10 +543,10 @@ describe("second pass — the floor warning states its own arithmetic (Ravi)", (
 		);
 		expect(r.ok).toBe(true);
 		if (!r.ok) return;
-		expect(r.sessionsTotal).toBe(18); // paid
-		expect(r.sessionsCounted).toBe(26); // paid + 8 free — the actual divisor
-		// 6,498 / 26 = 249.92. Reporting "across 18 sessions" made the warning contradict itself.
-		expect(r.effectivePerSession).toBe(249.92);
+		expect(r.sessionsTotal).toBe(18); // delivered (3 leaders × 6)
+		expect(r.sessionsCounted).toBe(26); // + 8 free — the actual divisor
+		// 3 × 1,778 / 26 = 205.15. Reporting "across 18 sessions" made the warning contradict itself.
+		expect(r.effectivePerSession).toBe(Math.round(((3 * offerById("first-quarter")!.ai_channel_price!) / 26) * 100) / 100);
 		expect(r.sessionsCounted * r.effectivePerSession).toBeCloseTo(r.finalPrice, 0);
 		expect(r.breachesFloor).toBe(true);
 	});
@@ -567,17 +574,17 @@ describe("second pass — the discount label reconciles with the price (Ravi)", 
 			sessions: 6,
 			focus: ["x"],
 			successDef: "y",
-			listPrice: 2580,
-			finalPrice: 2166,
-			discountPct: 16,
+			listPrice: 1975,
+			finalPrice: 1778,
+			discountPct: 10,
 			freeSessions: 0,
 			leaders: 1,
-			effectivePerSession: 361,
+			effectivePerSession: 296.33,
 			validUntil: "2026-09-20",
-			code: "AI16-260821-CCCCCCCC",
+			code: "AI10-260821-CCCCCCCC",
 			program: null,
 		});
-		expect(h).toContain("you save €414");
+		expect(h).toContain("you save €197");
 	});
 });
 
@@ -585,29 +592,34 @@ describe("second pass — the discount label reconciles with the price (Ravi)", 
  * The three pricing decisions Marian took on 2026-08-21 after the persona run. These are not
  * bug fixes — they are the resolutions, and each one closed a contradiction a tester found.
  */
-describe("DECISION: one rate, every package, everyone", () => {
-	it("every package costs the same per session through the channel", () => {
+describe("DECISION: one list rate, free sessions in the package, 10% on every package (2026-08-30)", () => {
+	it("every package is paid sessions x one list rate, and the same percentage off through the channel", () => {
 		// Ravi walked at exactly this: 790 / 2 = 395 on a page that had just told him the rate
 		// never moves, with the COMPANY sku (6,498 / 18 = 361) quietly the cheapest of all.
-		// The fix is a rate-defined channel, not a rewritten price list: published list prices
-		// are untouched (no website edit, no parity gap), and the channel flattens them to one.
-		const ai = new Set(offers.map((o) => o.ai_channel_price! / (o.sessions ?? 1)));
-		expect([...ai]).toEqual([361]);
-		expect(channelRate()).toBe(361);
-		// List prices unchanged from what marian.coach and the skill already publish.
-		expect(offerById("single-session")!.price).toBe(430);
-		expect(offerById("first-quarter")!.price).toBe(2580);
+		// The fix: ONE list rate everywhere, packages add FREE sessions instead of a lower rate,
+		// and the channel takes the same 10% off every package.
+		const rates = new Set(offers.map((o) => o.per_session));
+		expect([...rates]).toEqual([listRate()]);
+		for (const o of offers) expect(doorRate(o)).toBeGreaterThanOrEqual(floorPerSession());
+		// List prices match what marian.coach and the skill publish (SCHEMA v2026.09).
+		expect(offerById("single-session")!.price).toBe(395);
+		expect(offerById("first-quarter")!.price).toBe(1975);
+		expect(offerById("two-quarters")!.price).toBe(3950);
 		expect(offerById("monthly")!.price).toBe(790);
-		expect(offerById("mentor-in-residence")!.price).toBe(6498);
+		expect(offerById("mentor-in-residence")!.price).toBe(5925);
 	});
 
-	it("the saving is computed per package, never asserted as a blanket 16%", () => {
-		// 2,580 x 0.84 = 2,167.20, not 2,166 — the blanket figure never reconciled, and it
-		// would be plain wrong on monthly (8%) and Mentor in Residence (already at the rate).
-		expect(discountFor("first-quarter", "mcp")!.saving).toBe(414);
-		expect(discountFor("monthly", "mcp")!.saving).toBe(68);
-		expect(discountFor("mentor-in-residence", "mcp")!.saving).toBe(0);
-		expect(discountFor("mentor-in-residence", "mcp")!.pct).toBe(0);
+	it("the saving is computed per package and reconciles with the two real prices", () => {
+		// 2,580 x 0.84 = 2,167.20, not 2,166 — the old blanket figure never reconciled. The
+		// saving is always list minus AI-door, and the computed pct agrees with the headline.
+		for (const o of offers) {
+			const d = discountFor(o.id, "mcp")!;
+			expect(d.saving).toBe(o.price - o.ai_channel_price!);
+			expect(d.pct).toBe(aiDiscount()!.pct);
+		}
+		expect(discountFor("first-quarter", "mcp")!.saving).toBe(197);
+		expect(discountFor("monthly", "mcp")!.saving).toBe(79);
+		expect(discountFor("mentor-in-residence", "mcp")!.saving).toBe(592);
 	});
 
 	it("a company pays exactly what an individual pays, per session", () => {
@@ -620,12 +632,12 @@ describe("DECISION: one rate, every package, everyone", () => {
 });
 
 describe("DECISION: the floor governs the CHARGED rate; free sessions sit outside it", () => {
-	it("the charged rate is 361 on every package and never moves", async () => {
-		for (const id of ["single-session", "first-quarter", "monthly"]) {
+	it("the per-session figure is the package's AI-door rate on every package and never breaches the floor", async () => {
+		for (const id of ["single-session", "first-quarter", "two-quarters", "monthly"]) {
 			const r = await submitInquiry({}, { ...BASE, offer_id: id, name: "Test Person", email: "test@example.com", price_agreed: true, channel: "mcp" });
 			expect(r.ok).toBe(true);
 			if (!r.ok) return;
-			expect(r.finalPrice / r.sessionsTotal).toBe(361);
+			expect(r.finalPrice / r.sessionsTotal).toBeCloseTo(doorRate(offerById(id)!), 2);
 			expect(r.breachesFloor).toBe(false);
 		}
 	});
@@ -637,8 +649,8 @@ describe("DECISION: the floor governs the CHARGED rate; free sessions sit outsid
 		);
 		expect(r.ok).toBe(true);
 		if (!r.ok) return;
-		expect(r.finalPrice / r.sessionsTotal).toBe(361); // charged rate, unmoved
-		expect(r.effectivePerSession).toBeLessThan(361); // effective rate, disclosed not hidden
+		expect(r.finalPrice / r.sessionsTotal).toBeCloseTo(doorRate(offerById("first-quarter")!), 2); // charged rate, unmoved
+		expect(r.effectivePerSession).toBeLessThan(doorRate(offerById("first-quarter")!)); // effective rate, disclosed not hidden
 		expect(r.sessionsCounted).toBe(r.sessionsTotal + 8);
 		// The terms no longer assert an absolute the ladder breaks.
 		expect(guardrailLines("first-quarter").join(" ")).not.toContain("final rate never goes below");
@@ -650,9 +662,9 @@ describe("DECISION: VAT is answered, not deferred to a footnote", () => {
 		const r = await submitInquiry({}, { ...BASE, offer_id: "first-quarter", name: "Test Person", email: "test@example.com", price_agreed: true, channel: "mcp" });
 		expect(r.ok).toBe(true);
 		if (!r.ok) return;
-		// Ravi's whole question: is it €2,166 or €2,620.86? His allowance was €2,600.
-		expect(r.finalPrice).toBe(2166);
-		expect(r.vat).toContain("€2,620.86");
+		// Ravi's whole question: is it €1,778 or €2,151.38? (1,778 × 1.21.) His allowance was €2,600.
+		expect(r.finalPrice).toBe(1778);
+		expect(r.vat).toContain("€2,151.38");
 		expect(r.vat).toContain("21%");
 		expect(r.vat).toContain("CZ7909287980");
 	});
@@ -672,18 +684,18 @@ describe("DECISION: VAT is answered, not deferred to a footnote", () => {
 			sessions: 6,
 			focus: ["x"],
 			successDef: "y",
-			listPrice: 2580,
-			finalPrice: 2166,
-			discountPct: 16,
+			listPrice: 1975,
+			finalPrice: 1778,
+			discountPct: 10,
 			freeSessions: 0,
 			leaders: 1,
-			effectivePerSession: 361,
-			vat: "€2,166 excl. VAT, €2,620.86 including 21% Czech VAT — the gross figure is what leaves your account. VAT ID CZ7909287980.",
+			effectivePerSession: 296.33,
+			vat: "€1,778 excl. VAT, €2,151.38 including 21% Czech VAT — the gross figure is what leaves your account. VAT ID CZ7909287980.",
 			validUntil: "2026-09-20",
-			code: "AI16-260821-DDDDDDDD",
+			code: "AI10-260821-DDDDDDDD",
 			program: null,
 		});
-		expect(h).toContain("€2,620.86");
+		expect(h).toContain("€2,151.38");
 		expect(h).toContain("CZ7909287980");
 	});
 });

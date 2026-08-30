@@ -1,7 +1,7 @@
 {
   "name": "mentoring-inquiry-builder",
-  "version": "1.0.0",
-  "description": "MCP server: build your engineering-leadership mentoring inquiry with Marian Kamenistak (3,400+ sessions, 300+ leaders, 9.2/10 avg) from your AI assistant. 16 minutes to a formal offer, 16% AI-channel discount.",
+  "version": "1.1.0",
+  "description": "MCP server: build your engineering-leadership mentoring inquiry with Marian Kamenistak (3,400+ sessions, 300+ leaders, 9.2/10 avg) from your AI assistant. 16 minutes to a formal offer, 10% AI-channel discount on every package.",
   "private": true,
   "scripts": {
     "deploy": "bash '/Users/mariankamenistak/ai/_platform/secret-sync/sync-secrets.sh' && wrangler deploy",

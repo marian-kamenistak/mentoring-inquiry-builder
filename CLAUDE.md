@@ -3,8 +3,8 @@
 ## What this is
 Mentoring AI Inquiry Wizard for the **mc** stream: authless MCP server at
 `https://www.marian.coach/mcp/mentoring` plus the chat backend for `/mentoring-chat/` on
-marian.coach. Eight tools walk a visitor from options to a formal itemized offer (16% AI-channel
-discount, floor 361 EUR/session, prices computed server-side only) and then to a booked session.
+marian.coach. Eight tools walk a visitor from options to a formal itemized offer (10% AI-channel
+discount on every package, floor 296 EUR/session, prices computed server-side only) and then to a booked session.
 Read-only REST at `/mcp/mentoring/api/openapi.json`. Receives Reclaim booking webhooks on **two**
 routes, one per scheduling link.
 

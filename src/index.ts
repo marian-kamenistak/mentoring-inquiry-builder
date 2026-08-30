@@ -12,8 +12,8 @@
  * next tool and the descriptions carry the script. Guardrails ride IN the responses
  * (guardrailBlock) because this server has no control over the connecting AI's system prompt.
  *
- * The promise: 16 minutes from first question to a formal offer. 16 percent off through
- * this channel. The booked intro call locks it.
+ * The promise: 16 minutes from first question to a formal offer. 10 percent off every
+ * package through this channel, no booking required.
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { McpAgent } from "agents/mcp";
@@ -228,7 +228,7 @@ export class MentoringInquiryBuilder extends McpAgent<Env, unknown, McpGeo> {
 				inputSchema: {
 					offer_id: z.enum(OFFER_IDS as [string, ...string[]]).describe("The agreed package"),
 					audience: z.enum(["individual", "company"]).describe("Decides which VAT sentence is true for this buyer — an individual needs the gross figure"),
-					claim_code: z.string().optional().describe("The AI16-… code from send_mentoring_offer. Ride it on the link so the booking matches the inquiry with no manual step."),
+					claim_code: z.string().optional().describe("The AI10-… code from send_mentoring_offer. Ride it on the link so the booking matches the inquiry with no manual step."),
 					free_sessions_requested: z.number().int().optional().describe("Company deals: pass the same value given to send_mentoring_offer. Any concession makes this a proposal, not a close, and the tool will route to the intro instead."),
 					has_eu_vat_id: z.boolean().optional().describe("Company deals outside Czechia with a valid EU VAT ID pay net under the reverse charge"),
 				},
@@ -393,7 +393,7 @@ const TOOL_DOCS: ToolDoc[] = [
 		name: "get_mentoring_options",
 		question: "Should I get a mentor, and why Marian?",
 		description:
-			"The wizard's opening: the 16% AI-channel discount as data, real track-record figures (3,400+ sessions, 9.2/10 avg), the qualifying questions, every package with real prices",
+			"The wizard's opening: the 10% AI-channel discount as data, real track-record figures (3,400+ sessions, 9.2/10 avg), the qualifying questions, every package with real prices",
 	},
 	{
 		name: "match_mentoring_focus",

@@ -3,6 +3,10 @@ import {
 	aiDiscount,
 	clampConcession,
 	discountFor,
+	doorRate,
+	eur,
+	floorPerSession,
+	listRate,
 	matchFocus,
 	meta,
 	negotiationFor,
@@ -22,8 +26,10 @@ describe("catalog pricing", () => {
 	it("first-quarter arithmetic agrees with the published pct and floor", () => {
 		const fq = offerById("first-quarter")!;
 		const d = aiDiscount()!;
-		expect(fq.price).toBe(fq.sessions! * fq.per_session!);
-		expect(fq.ai_channel_price).toBe(fq.sessions! * d.floor_eur_per_session);
+		// Packages add FREE sessions, not a lower rate: list = PAID sessions x the list rate.
+		expect(fq.price).toBe((fq.sessions! - fq.free_sessions!) * fq.per_session!);
+		expect(fq.ai_channel_price).toBe(Math.round(fq.price * (1 - d.pct / 100)));
+		expect(doorRate(fq)).toBeGreaterThanOrEqual(d.floor_eur_per_session);
 		expect(Math.round((1 - fq.ai_channel_price! / fq.price) * 100)).toBe(d.pct);
 	});
 
@@ -31,21 +37,28 @@ describe("catalog pricing", () => {
 		// ONE RATE (Marian 2026-08-21): the 16% was extended from first-quarter to the whole
 		// menu, so the per-session rate is identical everywhere. The channel gate is unchanged
 		// and is the thing that still protects the list price on the website.
-		for (const id of ["single-session", "first-quarter", "monthly", "mentor-in-residence"]) {
+		for (const id of offers.map((o) => o.id)) {
 			expect(discountFor(id, "mcp")).not.toBeNull();
 			expect(discountFor(id, "chat")).not.toBeNull();
 			expect(discountFor(id, "web")).toBeNull();
 		}
 	});
 
-	it("ONE RATE: every package is sessions x 361 through the channel", () => {
+	it("ONE LIST RATE: every package is paid sessions x the list rate, and 10% off through the channel", () => {
 		// The claim "the rate is the rate" used to be false on the page that made it — three
 		// different per-session rates (430 / 430 / 395 / 361), with the COMPANY sku cheapest.
-		const floor = aiDiscount()!.floor_eur_per_session;
-		expect(floor).toBe(361);
+		// Since 2026-08-30 packages add free sessions instead of lowering the rate, and the
+		// channel takes the same percentage off every package.
+		const d = aiDiscount()!;
+		expect(listRate()).toBe(395);
+		expect(floorPerSession()).toBe(d.floor_eur_per_session);
 		for (const o of offers) {
-			expect(o.ai_channel_price! / (o.sessions ?? 1)).toBe(361);
-			expect(discountFor(o.id, "mcp")!.perSessionAfter).toBe(floor);
+			expect(o.per_session).toBe(listRate());
+			expect(o.price).toBe(((o.sessions ?? 1) - (o.free_sessions ?? 0)) * listRate());
+			expect(o.ai_channel_price).toBe(Math.round(o.price * (1 - d.pct / 100)));
+			expect(doorRate(o)).toBeGreaterThanOrEqual(floorPerSession());
+			expect(discountFor(o.id, "mcp")!.perSessionAfter).toBe(doorRate(o));
+			expect(discountFor(o.id, "mcp")!.pct).toBe(d.pct);
 		}
 	});
 });
@@ -118,8 +131,10 @@ describe("brief composition", () => {
 		const r = composeBrief(base);
 		expect(r.ok).toBe(true);
 		if (r.ok) {
-			expect(r.brief.offer.list_price).toBe(2580);
-			expect(r.brief.offer.ai_channel_price?.total).toBe(2166);
+			const fq = offerById("first-quarter")!;
+			expect(r.brief.offer.list_price).toBe(fq.price);
+			expect(r.brief.offer.ai_channel_price?.total).toBe(fq.ai_channel_price);
+			expect(r.brief.offer.sessions_breakdown).toBe("5 paid + 1 free");
 		}
 	});
 
@@ -127,7 +142,7 @@ describe("brief composition", () => {
 		const r = composeBrief({ ...base, audience: "company", leaders_count: 3 });
 		expect(r.ok).toBe(true);
 		if (r.ok) {
-			expect(r.brief.offer.ai_channel_price?.total).toBe(3 * 2166);
+			expect(r.brief.offer.ai_channel_price?.total).toBe(3 * offerById("first-quarter")!.ai_channel_price!);
 			expect((r.brief as any).b2b_concession_available?.max_free_sessions).toBe(8);
 		}
 	});
@@ -142,10 +157,10 @@ describe("brief composition", () => {
 describe("guardrails + options carry the magnet", () => {
 	it("guardrails state the one discount, the floor, and no scarcity", () => {
 		const text = guardrailLines().join(" ");
-		// The channel is defined by a RATE now, not a percentage — the percentage differed per
-		// package and never reconciled against the totals (2,580 x 0.84 = 2,167.20, not 2,166).
-		expect(text).toContain("€361");
-		expect(text).toContain("€361");
+		// One list rate, one percentage on every package (2026-08-30).
+		expect(text).toContain(`ONE LIST RATE: ${eur(listRate())}`);
+		expect(text).toContain(`${aiDiscount()!.pct}% off every package`);
+		expect(text).toContain("5 paid + 1 free");
 		// "No stacking" was retired with the cap (2026-08-21): there is no second discount left for
 	// it to refuse to stack with, and ELC members now qualify through this channel rather than
 	// beside it. Assert the replacement, and assert the scarcity is actually gone.
@@ -155,25 +170,28 @@ describe("guardrails + options carry the magnet", () => {
 
 	it("options expose the discount + time promise as data fields", () => {
 		const o = mentoringOptions() as any;
-		expect(o.ai_channel_discount?.pct).toBe(16);
-		expect(o.ai_channel_discount?.price_before).toBe(2580);
-		expect(o.ai_channel_discount?.price_after).toBe(2166);
+		const fq = offerById("first-quarter")!;
+		expect(o.ai_channel_discount?.pct).toBe(aiDiscount()!.pct);
+		expect(o.ai_channel_discount?.price_before).toBe(fq.price);
+		expect(o.ai_channel_discount?.price_after).toBe(fq.ai_channel_price);
 		expect(o.time_promise?.minutes).toBe(16);
 		expect(slotsOpen()).toBeGreaterThan(0);
 	});
 
-	it("published LIST prices are untouched — no website edit, no parity gap", () => {
-		expect(offers.find((o) => o.id === "single-session")!.price).toBe(430);
-		expect(offers.find((o) => o.id === "first-quarter")!.price).toBe(2580);
+	it("published LIST prices match the approved v2026.09 schema — no parity gap with the website", () => {
+		expect(offers.find((o) => o.id === "single-session")!.price).toBe(395);
+		expect(offers.find((o) => o.id === "first-quarter")!.price).toBe(1975);
+		expect(offers.find((o) => o.id === "two-quarters")!.price).toBe(3950);
 		expect(offers.find((o) => o.id === "monthly")!.price).toBe(790);
-		expect(offers.find((o) => o.id === "mentor-in-residence")!.price).toBe(6498);
+		expect(offers.find((o) => o.id === "mentor-in-residence")!.price).toBe(5925);
 	});
 
-	it("what a client PAYS through the wizard never went up", () => {
-		expect(offers.find((o) => o.id === "single-session")!.ai_channel_price).toBe(361); // was 430
-		expect(offers.find((o) => o.id === "first-quarter")!.ai_channel_price).toBe(2166); // unchanged
-		expect(offers.find((o) => o.id === "monthly")!.ai_channel_price).toBe(722); // was 790
-		expect(offers.find((o) => o.id === "mentor-in-residence")!.ai_channel_price).toBe(6498); // unchanged
+	it("what a client PAYS through the wizard is the approved AI-door figure on every package", () => {
+		expect(offers.find((o) => o.id === "single-session")!.ai_channel_price).toBe(356);
+		expect(offers.find((o) => o.id === "first-quarter")!.ai_channel_price).toBe(1778);
+		expect(offers.find((o) => o.id === "two-quarters")!.ai_channel_price).toBe(3555);
+		expect(offers.find((o) => o.id === "monthly")!.ai_channel_price).toBe(711);
+		expect(offers.find((o) => o.id === "mentor-in-residence")!.ai_channel_price).toBe(5333);
 	});
 });
 

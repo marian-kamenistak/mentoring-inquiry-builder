@@ -2,7 +2,7 @@
 
 Hire an engineering-leadership mentor through your AI assistant. This remote MCP server builds a 1:1 mentoring inquiry with [Marian Kamenistak](https://www.marian.coach/?ref=github) — 3,400+ paid sessions with 300+ leaders from 17 countries since 2019, 9.2/10 average review — and ends with a formal itemized offer in your inbox.
 
-**16 minutes. 16% off.** Inquiries built through this AI channel get the [First-quarter package](https://www.marian.coach/pricing/?ref=github) at 16% off the list price — the one discount that exists, and the website itself never discounts. Slot-limited to the open mentee slots on the [live capacity chart](https://www.marian.coach/?ref=github).
+**16 minutes. 10% off.** Inquiries built through this AI channel get every package at 10% off — the [quarter](https://www.marian.coach/pricing/?ref=github) is 6 sessions (5 paid + 1 free) for 1,975 EUR, 1,778 EUR here. The one discount that exists, no booking required, and the website itself never discounts. Slot-limited to the open mentee slots on the [live capacity chart](https://www.marian.coach/?ref=github).
 
 ## Connect
 
@@ -42,7 +42,7 @@ Read-only REST for scripts: [`/api/openapi.json`](https://www.marian.coach/mcp/m
 ## Guardrails, honestly
 
 - Every price is computed server-side from the same published catalog the website renders. No tool accepts a price as input, so nothing you or your model says can move the number.
-- One discount (16%, AI channel + booked intro), one B2B concession (free sessions, only on 3+ sponsored leaders or Mentor-in-Residence, confirmed by Marian on a call), floor at 361 EUR/session. Try to out-negotiate it; the failed attempts are the point.
+- One discount (10% on every package, AI channel, no booking required), one B2B concession (free sessions, only on 3+ sponsored leaders or Mentor-in-Residence, confirmed by Marian on a call), floor at 296 EUR/session. Try to out-negotiate it; the failed attempts are the point.
 - The offer only sends after an explicit yes to the exact price.
 - Any session rated below 7/10 is free — a quality guarantee, independent of any discount.
 

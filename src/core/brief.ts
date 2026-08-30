@@ -6,6 +6,7 @@
  */
 import {
 	aiDiscount,
+	discountPct,
 	effectiveRate,
 	eur,
 	focusAreaById,
@@ -21,6 +22,7 @@ import {
 	priceDisplay,
 	roleBandById,
 	routing,
+	sessionsBreakdown,
 	sessionsDelivered,
 	vatFor,
 	unitSuffix,
@@ -138,6 +140,13 @@ export function composeBrief(input: BriefInput) {
 								: ""
 				}`,
 				value: offer!.value,
+				// Packages add FREE sessions, not a lower rate (2026-08-30). Stated as data so the
+				// offer shows "5 paid + 1 free" and nobody calls the free session a discount.
+				sessions_breakdown: sessionsBreakdown(offer!),
+				paid_sessions: ((offer!.sessions ?? 1) - (offer!.free_sessions ?? 0)) * mult,
+				free_sessions_included: (offer!.free_sessions ?? 0) * mult,
+				list_rate_per_session_eur: offer!.per_session,
+				...(offer!.effective_per_session !== undefined ? { list_effective_per_session_eur: offer!.effective_per_session } : {}),
 				// Commitment terms existed only as six words of prose inside `value` and reached
 				// neither the offer nor the email — the one contractual fact a subscription buyer
 				// needs was the one thing the "formal itemized offer" omitted.
@@ -156,7 +165,7 @@ export function composeBrief(input: BriefInput) {
 								pct: d!.pct,
 								per_leader: offer!.ai_channel_price!,
 								total: finalTotal,
-								display: `${priceDisplay(offer!, finalTotal)} through this AI channel with a booked intro (${d!.pct}% off, ${eur(rate.perSession)}/session).`,
+								display: `${priceDisplay(offer!, finalTotal)} through this AI channel, no booking required (${d!.pct}% off the ${eur(listTotal)} list price; ${sessionsTotal} sessions, ${sessionsBreakdown(offer!)}, ${eur(rate.perSession)}/session).`,
 								...(offer!.installments && leaders === 1
 									? { installments: `${offer!.installments.count} monthly payments of ${eur(offer!.installments.ai_channel_eur)}` }
 									: {}),
@@ -164,10 +173,12 @@ export function composeBrief(input: BriefInput) {
 						}
 					: {
 							// State non-applicability positively. It used to be communicated only by
-							// the ABSENCE of a field, while `lead_with` had already promised the 16%
+							// the ABSENCE of a field, while `lead_with` had already promised the discount
 							// unconditionally — so single-session and monthly buyers reached the
 							// offer email still expecting a discount that never existed for them.
-							no_ai_channel_discount: `${offer!.name} carries no AI-channel discount — the ${d?.pct ?? 16}% applies to the ${offerById("first-quarter")?.name ?? "First quarter"} package only. ${priceDisplay(offer!, listTotal)} is the published list price. Say this plainly instead of letting the discount be assumed.`,
+							// Since 2026-08-30 every catalog package carries the AI-door price, so this
+							// branch is reached only when the catalog itself withholds one.
+							no_ai_channel_discount: `${offer!.name} carries no AI-channel price in the catalog — ${priceDisplay(offer!, listTotal)} is the published list price. Say this plainly instead of letting the ${discountPct()}% be assumed.`,
 						}),
 			},
 			...(negotiation
