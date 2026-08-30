@@ -12,7 +12,7 @@
  *
  * Two kinds of booker, both handled:
  *   warm — came through the wizard, already a Person with an inquiry entry. Their
- *          entry flips to "Intro booked" and the pipeline advances to "Intro call".
+ *          entry flips to "Intro booked" and the pipeline advances to "intro arranged".
  *   cold — clicked an ad, landed, booked the intro, never touched the wizard. They
  *          are not a Person yet, so one is created (assert on email) before the
  *          pipeline row and the GA4 `call_booked` conversion. Without that the
@@ -142,15 +142,15 @@ export function formatMeetingWhen(body: any): string {
 	}
 }
 
-/** `call_booked` is a conversion, so it may only fire on the actual transition INTO `Intro call`.
+/** `call_booked` is a conversion, so it may only fire on the actual transition INTO `intro arranged`.
  * A re-sent or duplicated booking webhook (Reclaim retries, a Zapier replay, a reschedule) hits
- * this endpoint again with the person already parked on `Intro call` — counting that as a second
+ * this endpoint again with the person already parked on `intro arranged` — counting that as a second
  * conversion would inflate every ad platform's ROAS. Pass the person's `mentoring_pipeline` entry
  * (or null/undefined when they have none yet). */
 export function shouldFireCallBooked(pipeEntry: any): boolean {
 	if (!pipeEntry) return true;
-	const stage = pipeEntry?.entry_values?.stage?.[0]?.option?.title;
-	return stage !== "Intro call";
+	const stage = pipeEntry?.entry_values?.intro_arranged?.[0]?.status?.title;
+	return stage !== "intro arranged";
 }
 
 /** GA4 Measurement Protocol body for a `call_booked` server-side conversion event. */
@@ -328,20 +328,20 @@ export async function handleBookingHook(request: Request, env: HookEnv, url: URL
 							// hand. Seed it only when it is still blank — someone already on `mentoring` who
 							// books through the intro link must not be dragged back to `intro arranged`.
 							const onBoard = pipeEntry?.entry_values?.intro_arranged?.[0]?.status?.title;
-							const values: Record<string, string> = { stage: "Intro call" };
-							if (!onBoard) values.intro_arranged = "intro arranged";
-							await fetch(`https://api.attio.com/v2/lists/${PIPELINE_LIST_SLUG}/entries/${pipe.entry_id}`, {
-								method: "PATCH",
-								headers,
-								body: JSON.stringify({ data: { entry_values: values } }),
-							}).catch((e) => console.error("attio pipeline stage exception", String(e)));
+							if (!onBoard) {
+								await fetch(`https://api.attio.com/v2/lists/${PIPELINE_LIST_SLUG}/entries/${pipe.entry_id}`, {
+									method: "PATCH",
+									headers,
+									body: JSON.stringify({ data: { entry_values: { intro_arranged: "intro arranged" } } }),
+								}).catch((e) => console.error("attio pipeline stage exception", String(e)));
+							}
 						}
 					} else {
 						await fetch(`https://api.attio.com/v2/lists/${PIPELINE_LIST_SLUG}/entries`, {
 							method: "POST",
 							headers,
 							body: JSON.stringify({
-								data: { parent_record_id: personId, parent_object: "people", entry_values: { stage: "Intro call", intro_arranged: "intro arranged", added_via: "Manual", source: "booking" } },
+								data: { parent_record_id: personId, parent_object: "people", entry_values: { intro_arranged: "intro arranged", added_via: "Manual", source: "booking" } },
 							}),
 						}).catch((e) => console.error("attio pipeline create exception", String(e)));
 					}

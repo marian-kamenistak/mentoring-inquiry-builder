@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { isCancellationPayload, ga4CallBookedBody, extractHeardFrom, shouldFireCallBooked, handleBookingHook, extractAttendeeName, formatMeetingWhen } from "../src/hooks";
 
-// Shape of a real Attio list-entry read: entry_values.<slug>[0].option.title for a select.
+// Shape of a real Attio list-entry read. `intro_arranged` ("Mentee stage") is a STATUS-type
+// attribute, so its value nests under .status.title — a select would nest under .option.title.
 const entryAtStage = (title: string) => ({
 	entry_id: "e1",
 	list_api_slug: "mentoring_pipeline",
-	entry_values: { stage: [{ option: { title } }] },
+	entry_values: { intro_arranged: [{ status: { title } }] },
 });
 
 describe("booking-hook helpers", () => {
@@ -33,8 +34,8 @@ describe("booking-hook helpers", () => {
 	it("fires call_booked only on the transition into Intro call", () => {
 		expect(shouldFireCallBooked(null)).toBe(true);
 		expect(shouldFireCallBooked(undefined)).toBe(true);
-		expect(shouldFireCallBooked(entryAtStage("Lead"))).toBe(true);
-		expect(shouldFireCallBooked(entryAtStage("Intro call"))).toBe(false);
+		expect(shouldFireCallBooked(entryAtStage("lead"))).toBe(true);
+		expect(shouldFireCallBooked(entryAtStage("intro arranged"))).toBe(false);
 		// Unknown shape (entry_values missing) fails open — better a duplicate than a lost conversion.
 		expect(shouldFireCallBooked({ entry_id: "e1" })).toBe(true);
 	});
@@ -87,11 +88,11 @@ describe("booking-hook prep email", () => {
 		expect(prepCalls(calls)).toHaveLength(0);
 	});
 
-	it("does not email twice when a retry arrives for someone already on Intro call", async () => {
-		// Attio says: person exists, already parked on the Intro call stage. That is a replay.
+	it("does not email twice when a retry arrives for someone already on intro arranged", async () => {
+		// Attio says: person exists, already parked on intro arranged. That is a replay.
 		const calls = mockFetch((u) => {
 			if (u.includes("/people/records/query")) return new Response(JSON.stringify({ data: [{ id: { record_id: "p1" }, values: {} }] }), { status: 200 });
-			if (u.includes("/entries?limit=100")) return new Response(JSON.stringify({ data: [entryAtStage("Intro call")] }), { status: 200 });
+			if (u.includes("/entries?limit=100")) return new Response(JSON.stringify({ data: [entryAtStage("intro arranged")] }), { status: 200 });
 			return new Response("{}", { status: 200 });
 		});
 		await handleBookingHook(post({ email: "repeat@corp.com" }), { BOOKING_HOOK_SECRET: SECRET, PREP_INVITE_SECRET: PREP, ATTIO_TOKEN: "t" }, url);
@@ -101,7 +102,7 @@ describe("booking-hook prep email", () => {
 	it("still emails a returning person whose pipeline entry sits at an earlier stage", async () => {
 		const calls = mockFetch((u) => {
 			if (u.includes("/people/records/query")) return new Response(JSON.stringify({ data: [{ id: { record_id: "p1" }, values: {} }] }), { status: 200 });
-			if (u.includes("/entries?limit=100")) return new Response(JSON.stringify({ data: [entryAtStage("Lead")] }), { status: 200 });
+			if (u.includes("/entries?limit=100")) return new Response(JSON.stringify({ data: [entryAtStage("lead")] }), { status: 200 });
 			return new Response("{}", { status: 200 });
 		});
 		await handleBookingHook(post({ email: "lead@corp.com" }), { BOOKING_HOOK_SECRET: SECRET, PREP_INVITE_SECRET: PREP, ATTIO_TOKEN: "t" }, url);
