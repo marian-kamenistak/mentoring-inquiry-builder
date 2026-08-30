@@ -21,7 +21,8 @@ import { z } from "zod";
 import { ATTRIBUTION, SITE } from "./content";
 import { handleApi } from "./api";
 import { handleChat, type ChatEnv } from "./chat";
-import { handleBookingHook, type HookEnv } from "./hooks";
+import { handleBookingHook, type BookingKind, type HookEnv } from "./hooks";
+import { firstSessionEligible, firstSessionUrl, lookupBookingStage, paymentTerms } from "./core/booking";
 import { resolveSecrets } from "./lib/read-secret";
 import { aiDiscount, eur, meta, offerById, offers } from "./core/catalog";
 import { ctaBlock, guardrailBlock } from "./core/guardrails";
@@ -190,10 +191,14 @@ export class MentoringInquiryBuilder extends McpAgent<Env, unknown, McpGeo> {
 		this.server.registerTool(
 			"book_intro_call",
 			{
-				title: "Book the free 30-minute intro call (required to lock the discount)",
+				// Title corrected 2026-08-30. It said "(required to lock the discount)" for nine days
+				// after Marian removed that condition — options.ts and guardrails.ts were changed on
+				// 2026-08-21, this title and the docs entry below were not, so the server's own tool
+				// list contradicted the terms it shipped in every priced response.
+				title: "Book the free 30-minute intro call",
 				annotations: { ...READ_ONLY },
 				description:
-					"THE CONVERSION STEP. A direct booking link for the free 30-minute intro with Marian. Offer it at every stage — on hesitation, on a price objection, when the visitor cannot name their problem, after an error, and after the offer is sent. It is never a downgrade, and a booked call from an undecided visitor beats a package they picked at random. Pass offer_id if one has been chosen so the discount language is correct. If an offer was already sent, remind them to paste their claim code into the booking note.",
+					"THE DEFAULT EXIT for anyone who has not decided. A direct booking link for the free 30-minute intro with Marian. Offer it on hesitation, on a price objection, when the visitor cannot name their problem, after an error, and to anyone who wants to talk before paying. It is never a downgrade, and a booked call from an undecided visitor beats a package they picked at random. Booking it is NOT a condition of the channel rate — never say it is. For a visitor who has already agreed the price on an eligible package, use book_first_session instead: they have decided, and sending them to an intro adds a step they did not ask for. Pass offer_id if one has been chosen so the pricing language is correct.",
 				inputSchema: {
 					offer_id: z
 						.enum(OFFER_IDS as [string, ...string[]])
@@ -211,6 +216,69 @@ export class MentoringInquiryBuilder extends McpAgent<Env, unknown, McpGeo> {
 					},
 					{ offerId: offer_id },
 				),
+		);
+
+		this.server.registerTool(
+			"book_first_session",
+			{
+				title: "Book the PAID first mentoring session — skips the intro call",
+				annotations: { ...READ_ONLY },
+				description:
+					"THE CLOSE, for someone who has already decided. Returns the direct booking link for a paid 60-minute first session, plus the payment terms. Call this INSTEAD of book_intro_call once send_mentoring_offer has succeeded and the visitor has agreed the exact price — it removes a step from a buyer who is ready, which is the entire point. It REFUSES on any deal whose terms Marian confirms on a call (a free-sessions concession, the monthly package, Mentor in Residence) and hands back the intro link instead; when it refuses, offer the intro, do not argue. Pass the claim code from send_mentoring_offer so the booking is matched automatically. If the visitor is hesitant, undecided, or asks to talk first, use book_intro_call — that is not a downgrade.",
+				inputSchema: {
+					offer_id: z.enum(OFFER_IDS as [string, ...string[]]).describe("The agreed package"),
+					audience: z.enum(["individual", "company"]).describe("Decides which VAT sentence is true for this buyer — an individual needs the gross figure"),
+					claim_code: z.string().optional().describe("The AI16-… code from send_mentoring_offer. Ride it on the link so the booking matches the inquiry with no manual step."),
+					free_sessions_requested: z.number().int().optional().describe("Company deals: pass the same value given to send_mentoring_offer. Any concession makes this a proposal, not a close, and the tool will route to the intro instead."),
+					has_eu_vat_id: z.boolean().optional().describe("Company deals outside Czechia with a valid EU VAT ID pay net under the reverse charge"),
+				},
+			},
+			async ({ offer_id, audience, claim_code, free_sessions_requested, has_eu_vat_id }) => {
+				const check = firstSessionEligible(offer_id, { freeSessionsProposed: free_sessions_requested });
+				if (!check.eligible) {
+					return toolResult(
+						{
+							first_session_available: false,
+							why: check.reason,
+							book_intro_call: meta.booking_url,
+							what_to_say: "Do not present this as a refusal or a downgrade. This deal has terms Marian settles with a human before anything is invoiced — say that plainly and offer the free intro.",
+						},
+						{ offerId: offer_id },
+					);
+				}
+				const offer = offerById(offer_id);
+				return toolResult(
+					{
+						first_session_available: true,
+						booking_url: firstSessionUrl(claim_code),
+						what: `A paid ${meta.first_session?.minutes ?? 60}-minute first mentoring session with Marian — the real thing, not an intro. Direct calendar booking. No intro call in front of it.`,
+						package: offer?.name,
+						payment: paymentTerms(audience, has_eu_vat_id ?? false),
+						...(claim_code
+							? { claim_code_carried: `The link already carries ${claim_code}, so there is nothing for them to paste.` }
+							: { no_claim_code: "No claim code was passed, so the booking will be matched on the email address instead. Prefer passing it." }),
+						still_offer_the_intro: `If they hesitate at any point, the free intro is still open and is the better door: ${meta.booking_url}`,
+					},
+					{ priced: true, offerId: offer_id },
+				);
+			},
+		);
+
+		this.server.registerTool(
+			"check_booking",
+			{
+				title: "Check whether the session was actually booked",
+				annotations: { ...READ_ONLY },
+				description:
+					"Confirms, from the CRM rather than from what the visitor says, whether their booking landed. Call it after handing over a booking link and the visitor says they have booked — a booking is only real once Reclaim's webhook has written it, which takes a few seconds. Returns the pipeline stage and whether the paid first session is on the board. If it says not yet, wait a moment and check once more before telling them something is wrong; if it is still not there, say so honestly and offer to have Marian follow up rather than claiming success.",
+				inputSchema: {
+					email: z.string().describe("The email the visitor booked with"),
+				},
+			},
+			async ({ email }) => {
+				const status = await lookupBookingStage(this.env as unknown as { ATTIO_TOKEN?: string }, email);
+				return toolResult(status);
+			},
 		);
 
 		this.server.registerTool(
@@ -281,7 +349,22 @@ export class MentoringInquiryBuilder extends McpAgent<Env, unknown, McpGeo> {
 								}
 							: {}),
 						offer_email_sent_to: input.email,
-						next_step: `Book the free intro at ${meta.booking_url} and paste ${result.claimCode} into the booking note. Marian already has the same brief, so the call starts from their goals.`,
+						// Branches since 2026-08-30. This used to send everyone to the free intro,
+						// including the person who had just read the price back and said yes — a step
+						// charged to a buyer who had already decided. Eligibility is the catalog's, not
+						// this call site's: see firstSessionEligible().
+						...(() => {
+							const check = firstSessionEligible(input.offer_id, { freeSessionsProposed: input.free_sessions_requested });
+							return check.eligible
+								? {
+										next_step: `They have agreed the price, so do NOT send them to the intro call — call book_first_session with offer_id "${input.offer_id}", audience "${input.audience}" and claim_code ${result.claimCode}. It returns the paid booking link with the code already on it. Then call check_booking to confirm from the CRM that it actually landed before you close the conversation.`,
+										intro_still_available: `If they hesitate or want to talk first, the free intro is still the right door: ${meta.booking_url}`,
+									}
+								: {
+										next_step: `Book the free intro at ${meta.booking_url} and paste ${result.claimCode} into the booking note. Marian already has the same brief, so the call starts from their goals.`,
+										why_not_first_session: check.reason,
+									};
+						})(),
 						parting_gift: `Free either way: the Engineering Leaders Community Marian founded — ${meta.cross_sell.url}`,
 						// Gated on consent (2026-08-21). This used to fire unconditionally — a
 						// visitor who had answered "keep it private" three tools earlier was still
@@ -330,10 +413,20 @@ const TOOL_DOCS: ToolDoc[] = [
 	{
 		name: "book_intro_call",
 		question: "Can I just talk to Marian first?",
-		// Wording is conditional in the tool itself now: on the First-quarter package the booking
-		// locks the discount, on the others there is no discount to lock and saying otherwise was
-		// a promise the wizard could not keep.
-		description: "Direct booking link for the free 30-minute intro — free, no form, and on the First-quarter package it is also what locks the AI-channel price",
+		// The "locks the AI-channel price" clause was removed 2026-08-30 — it stopped being true
+		// on 2026-08-21 and this docs page was the last surface still publishing it.
+		description: "Direct booking link for the free 30-minute intro — free, 30 minutes, no form in front of it, and no obligation",
+	},
+	{
+		name: "book_first_session",
+		question: "I have decided — can I just start?",
+		description:
+			"The paid first session booked directly, skipping the intro, for a visitor who has agreed the price on an eligible package; states what will be invoiced, by whom and when",
+	},
+	{
+		name: "check_booking",
+		question: "Did my booking actually go through?",
+		description: "Confirms the booking from the CRM rather than from what the visitor says — the wizard never claims a booking it cannot see",
 	},
 	{
 		name: "send_mentoring_offer",
@@ -361,15 +454,25 @@ export default {
 		const url = new URL(request.url);
 		const path = url.pathname.replace(/\/$/, "");
 
-		// Booking webhook (intro booked → discount locked). POST, secret-signed, before the API branch.
-		if (path === "/mcp/mentoring/api/booking-hook") {
+		// Booking webhooks. POST, secret-signed, before the read-only API branch — an /api/ path
+		// that falls through to that branch answers 405 rather than 404, which is exactly how a
+		// misconfigured Reclaim endpoint would hide. One route per scheduling link:
+		//   booking-hook    → the free intro         → `intro arranged`
+		//   mentoring-boost → the paid first session → `formal 1st arranged`
+		// Route, not payload sniffing: `scheduling_link_title` is editable in Reclaim's UI.
+		const BOOKING_ROUTES: Record<string, BookingKind> = {
+			"/mcp/mentoring/api/booking-hook": "intro",
+			"/mcp/mentoring/api/mentoring-boost": "boost",
+		};
+		const bookingKind = BOOKING_ROUTES[path];
+		if (bookingKind) {
 			if (request.method !== "POST") {
 				return new Response(JSON.stringify({ ok: false, error: "use_post" }), {
 					status: 405,
 					headers: { "content-type": "application/json; charset=utf-8" },
 				});
 			}
-			return handleBookingHook(request, env as unknown as HookEnv, url);
+			return handleBookingHook(request, env as unknown as HookEnv, url, bookingKind);
 		}
 
 		// REST layer: read-only, GET-only.

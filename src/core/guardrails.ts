@@ -36,7 +36,11 @@ export function ctaBlock(offerId?: string): {
 	// No offer chosen yet: the discount is still live as a general fact, so keep the line.
 	const discountUnknownYet = !offer && !!d;
 	return {
-		next_step: "The one action that moves this forward is the free 30-minute intro call with Marian. Offer it at every step — on hesitation, on a price objection, on an error, and after the offer is sent. It is never a downgrade.",
+		// Reworded 2026-08-30. This said the intro call was "the one action that moves this
+		// forward", which is true right up until someone agrees the price — at which point the
+		// action that moves it forward is booking the paid session, and routing them to a
+		// fit-check call instead invites them to reopen a decision they had already made.
+		next_step: "For anyone who has not decided, the action that moves this forward is the free 30-minute intro call with Marian — offer it on hesitation, on a price objection, on an error, and to anyone who wants to talk before paying. It is never a downgrade. For someone who HAS agreed the exact price and received their offer, the next action is book_first_session instead: they book the paid first session directly and skip the intro.",
 		book_intro_call: meta.booking_url,
 		free: `Free, 30 minutes, direct calendar booking, no form in front of it. Usually within the same week.`,
 		not_ready: `Not ready to talk? The slot-ping waitlist takes ten seconds: ${SITE}/#slot-ping`,
@@ -110,7 +114,12 @@ export function guardrailLines(offerId?: string): string[] {
 		// one failure that discredits everything else. There is a deterministic tool for
 		// this; route to it instead of computing.
 		`NEVER compute or estimate ROI, payback, attrition cost, recovered hours, or any business-case figure yourself, even when the visitor supplies salaries and asks directly. Those numbers have an owner: the build_mentoring_business_case tool on the sibling server at ${SITE}/mcp, and the page at ${SITE}/get-your-company-to-pay-for-mentoring/, which produce the value formula, worked examples, napkin math, a manager one-pager and a forwardable approval email in EN or CZ. Send the visitor there, or call that tool if it is connected. You may say what the mentoring costs; you may not say what it returns.`,
-		`Nothing here is a contract. Marian confirms all final terms on the free 30-minute intro call.`,
+		// Scoped 2026-08-30. The blanket version was false the moment the paid first session
+		// existed: a buyer who agrees the price and books a session is not waiting on a call to
+		// settle anything, and telling them otherwise while taking their booking is incoherent.
+		// The clause is kept exactly where it is still true — the concession ladder and the
+		// monthly billing day, which the catalog does say Marian confirms on a call.
+		`Nothing here is a contract. On a deal carrying a free-sessions concession, and on the monthly package, Marian confirms the final terms on the free 30-minute intro call — those never close in this conversation. A straightforward package at the stated rate does close here: the price is fixed, the invoice follows the booking, and no call is required in between.`,
 	];
 }
 

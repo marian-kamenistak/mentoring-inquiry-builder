@@ -223,7 +223,10 @@ export async function submitInquiry(env: SubmitEnv, input: SubmitInput): Promise
 	const priceLines = discount
 		? [
 				`List price: ${priceDisplay(offer, listPrice)}${multi > 1 ? ` (${leaders} leaders × ${eur(offer.price)})` : ""}`,
-				`AI-channel price (-${discount.pct}%, intro booked): ${priceDisplay(offer, finalPrice)}`,
+				// "intro booked" removed 2026-08-30: the booking has not been a condition of this
+				// price since 2026-08-21, and this line was printing the old condition into every
+				// offer email — the one artifact a buyer keeps and forwards.
+				`AI-channel price (-${discount.pct}%): ${priceDisplay(offer, finalPrice)}`,
 			]
 		: [`Price: ${priceDisplay(offer, finalPrice)}`];
 	if (offer.commitment) priceLines.push(`Commitment: ${offer.commitment.terms}`);

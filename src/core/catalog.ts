@@ -83,6 +83,18 @@ type Catalog = {
 		pricing_url: string;
 		time_promise: { minutes: number; claim: string; is_ceiling?: boolean };
 		intro: { price: number; minutes: number; url: string; rule: string };
+		/** The paid first session — the AI channel's second door (2026-08-30). Optional so an
+		 *  older generated catalog still type-checks; every reader falls back to the intro. */
+		first_session?: {
+			url: string;
+			minutes: number;
+			eligible_offers: string[];
+			rule: string;
+			payment_terms: string;
+		};
+		/** VAT rules per buyer type. Present since 2026-08-21; optional for the same reason.
+		 *  Typed here so booking.ts can read it off `meta` without the cast vatTreatment() uses. */
+		vat_treatment?: VatTreatment;
 		guarantee: { threshold: number; scale: number; rule: string; note: string };
 		stop_rule: string;
 		member_rate: { eur_per_session: number; who: string; note: string };

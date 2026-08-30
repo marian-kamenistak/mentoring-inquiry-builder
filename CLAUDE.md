@@ -3,9 +3,17 @@
 ## What this is
 Mentoring AI Inquiry Wizard for the **mc** stream: authless MCP server at
 `https://www.marian.coach/mcp/mentoring` plus the chat backend for `/mentoring-chat/` on
-marian.coach. Six tools walk a visitor from options to a formal itemized offer (16% AI-channel
-discount, floor 361 EUR/session, prices computed server-side only). Read-only REST at
-`/mcp/mentoring/api/openapi.json`. Receives Reclaim booking webhooks.
+marian.coach. Eight tools walk a visitor from options to a formal itemized offer (16% AI-channel
+discount, floor 361 EUR/session, prices computed server-side only) and then to a booked session.
+Read-only REST at `/mcp/mentoring/api/openapi.json`. Receives Reclaim booking webhooks on **two**
+routes, one per scheduling link.
+
+**Two exits (2026-08-30).** Undecided → free intro (`book_intro_call`) → `intro arranged`.
+Agreed the price on an eligible package → paid first session (`book_first_session`) →
+`formal 1st arranged`, intro skipped. Eligibility is `meta.first_session.eligible_offers` in the
+catalog, never a hardcoded offer id; `monthly`, `mentor-in-residence` and any deal carrying a
+free-sessions concession are excluded because the catalog says Marian settles those on a call.
+`check_booking` confirms from Attio rather than from what the visitor claims.
 
 ## Stack
 - Cloudflare Worker + Durable Object `MentoringInquiryBuilder` (`MCP_OBJECT`), `McpAgent` (`agents` ^0.17), streamable HTTP
@@ -35,7 +43,8 @@ discount, floor 361 EUR/session, prices computed server-side only). Read-only RE
 ## Definition of done
 - [ ] `npm test` and `npm run type-check` exit 0
 - [ ] `wrangler deploy` exits 0
-- [ ] `tools/list` POST to `https://www.marian.coach/mcp/mentoring` returns 6 tools; GET returns 200 HTML
+- [ ] `tools/list` POST to `https://www.marian.coach/mcp/mentoring` returns **9** — the 8 mentoring tools plus `get_more_tools`, which `instrumentMcpUsage` injects. Public copy counts the 8; the wire count is 9. GET returns 200 HTML
+- [ ] Both booking routes answer with a `test@` address: `POST /api/booking-hook` → `path:"intro"`, `POST /api/mentoring-boost` → `path:"boost"`; a wrong secret 403s and a GET 405s
 - [ ] `wrangler tail --format json` for 60s: zero `console.error`, zero exceptions
 - [ ] Sibling `https://www.marian.coach/mcp` still answers (nesting intact)
 
@@ -43,4 +52,5 @@ discount, floor 361 EUR/session, prices computed server-side only). Read-only RE
 - `PREP_INVITE_SECRET` is shared with mc-web via the Secrets Store; a value drift 403s every prep invite silently.
 - Never re-push Secrets Store names through `.op-secrets` (collides with the binding, 2026-08-25).
 - `BOOKING_HOOK_ECHO=true` posts a booker's name and address to Slack verbatim — keep `false`.
-- The booking hook writes **one** ladder on `mentoring_pipeline`: `mentee_stage` (status type; api_slug was `intro_arranged` until 2026-08-30). It both drives Marian's "Mentoring flow" kanban and gates the GA4 `call_booked` de-dup via `shouldFireCallBooked` — the older `stage` select no longer exists on the list. `mentee_stage` is seeded **only when blank** — never overwrite it, or someone already on `mentoring` gets dragged back to `intro arranged` by a reschedule. It is also the only status-type attribute on that list, so archiving it breaks the kanban outright.
+- The booking hook writes **one** ladder on `mentoring_pipeline`: `mentee_stage` (status type; api_slug was `intro_arranged` until 2026-08-30). It both drives Marian's "Mentoring flow" kanban and gates the GA4 `call_booked` de-dup via `shouldFireCallBooked` — the older `stage` select no longer exists on the list. `mentee_stage` moves **forward only, by rank** (`canAdvance` in `core/booking.ts`) — changed 2026-08-30 from seed-only-when-blank, which stopped a reschedule dragging an active mentee back but also froze every wizard submission on `Not yet` forever and made the paid door impossible. The ladder is `Not yet → intro arranged → intro passed → formal invite sent → formal 1st arranged → mentoring → done`; write a title that is not on it and the rank is -1, so nothing moves. It is also the only status-type attribute on that list, so archiving it breaks the kanban outright.
+- `mentoring_ai_inquiries.status` is a **select**, not a status — `.option.title`, not `.status.title`. Attio 400s the WHOLE entry write on one unknown option, so `First session booked` had to be created via the API before the boost path could write it.

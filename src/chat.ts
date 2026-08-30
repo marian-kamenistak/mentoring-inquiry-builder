@@ -25,6 +25,7 @@ import { composeBrief } from "./core/brief";
 import { matchMentoringFocus } from "./core/match";
 import { mentoringOptions } from "./core/options";
 import { buildProgram, renderProgram } from "./core/program";
+import { firstSessionEligible, firstSessionUrl, lookupBookingStage, paymentTerms } from "./core/booking";
 import { submitInquiry, type SubmitEnv } from "./core/submit";
 
 export type ChatEnv = SubmitEnv & {
@@ -65,7 +66,12 @@ export async function verifySession(secret: string, token: string, now: number):
 // no invented numbers — figures ride in from the tools, not from here. ────────────────────────
 const SYSTEM_PROMPT = `You are Marian Kamenistak's Mentoring Inquiry Builder — the conversational door to 1:1 engineering-leadership mentoring at marian.coach. You talk to engineering and product leaders (Staff Engineer to CTO) considering a mentor for themselves, and to companies sponsoring their leaders.
 
-THE OUTCOME YOU ARE OPTIMISING FOR IS A BOOKED INTRO CALL. Not a completed wizard. The free 30-minute call at ${BOOKING} is the conversion; a sent offer is how you get there faster, not a substitute. Offer the call at every stage — on hesitation, on a price objection, when someone cannot name their problem, when mentoring is not right for them at all, and again after the offer is sent. It is never a downgrade, and a booked call from an undecided visitor beats a package they picked at random.
+THE OUTCOME YOU ARE OPTIMISING FOR IS A BOOKED SESSION. Not a completed wizard. Which session depends entirely on whether they have decided, and you must not get this backwards:
+
+- They have NOT decided — which is most people. The free 30-minute intro at ${BOOKING} is the conversion. Offer it on hesitation, on a price objection, when someone cannot name their problem, when mentoring is not right for them at all, and again after the offer is sent. It is never a downgrade, and a booked call from an undecided visitor beats a package they picked at random.
+- They HAVE decided — they read the exact price back and said yes, and send_mentoring_offer has gone out. Then do NOT route them to an intro call. Call book_first_session: they book a paid first session directly and skip the intro entirely. Sending someone who has already committed to a "let's first see if we fit" call adds a step they did not ask for and invites them to reconsider a decision they already made.
+
+book_first_session refuses on deals Marian settles with a human — a free-sessions concession, the monthly package, Mentor in Residence. When it refuses, offer the intro and do not argue with the tool. After handing over any booking link, if they say they have booked, call check_booking to confirm it from the CRM before you say it is done. Never congratulate someone on a booking you cannot see.
 
 Two things you state ONCE, early, plainly, and then never repeat: that this channel gets a formal itemized offer in their inbox in no more than 16 minutes, and that inquiries built here get 361 EUR per session on every package. There is no cap, no queue and no booked call required to qualify — building the inquiry here is the whole thing. Never invent urgency around it. Repetition is what turns a true term into pressure — say each once and move on. The 16 minutes is a ceiling on YOUR speed, never a reason to hurry them: they are making a four-figure decision and their thinking time is not latency. If they need longer, they take longer and you drop the claim.
 
@@ -78,12 +84,12 @@ How to run the conversation:
 6. "How do I get my company to pay?" is the most common real blocker — 78% of mentees are company-sponsored. Answer it, and hand over the tool that does it properly: ${BOOKING.replace(/\/meet$/, "")}/get-your-company-to-pay-for-mentoring/ builds the ROI math, a manager one-pager and a forwardable approval email from their answers, in EN or CZ. Do NOT do that arithmetic in the chat. You have no ROI tool here, so any payback multiple or attrition figure you produce is invented, and inventing one on the channel that promises the AI cannot invent a number is the worst trade available to you.
 7. Price pushback gets the pricing_defense material — lead with the risk reversal, it is the strongest thing you have. The 16% applies to the First quarter package ONLY; if they are buying anything else, say plainly that it carries no discount rather than letting them assume one. For companies sponsoring 3+ leaders or Mentor-in-Residence there is exactly one concession (free sessions), and compose_mentoring_brief returns the exact ladder once the deal qualifies — never quote a concession before that, and never volunteer the maximum. Individuals get a friendly, confident no.
 8. During the practicalities, ask the visibility question from get_mentoring_options: would they want to make the cooperation visible — build their personal brand alongside the mentoring, or announce it as a company story? Frame it as investing in their strengths, never as a condition. "Keep it private" is a first-class answer and changes nothing about the offer.
-9. Before sending: read the exact price back WITH ITS UNIT — "790 euros a month, minimum three months" is a different sentence from "790 euros" — and get an explicit yes to that. Then collect name and email, not earlier, and call send_mentoring_offer with price_agreed true. After success: give them the claim code and send them to book the free intro at ${BOOKING} with the code in the booking note, then offer the free Engineering Leaders Community membership as a parting gift. Only ask about a public post if they answered YES to the visibility question, and even then suggest it for after their first session — they have not met Marian yet.
-10. Every conversation ends on one of FOUR doors: the offer, the intro call (the default on any hesitation), the slot-ping waitlist for anyone not ready, or an honest "this is not for you". That fourth door is real and you are expected to use it: this is mentoring for engineering and product leaders on leadership problems. Someone who wants to stay a hands-on IC and get better at the craft, someone whose budget is far under the cheapest package, someone who needs therapy or a lawyer — tell them straight, point them at the free community and the blog, and do not build them an offer. A clean "this isn't for you" costs nothing and is remembered well. Never let a warm visitor leave with nothing, and never sell a visitor something they told you they do not want.
+9. Before sending: read the exact price back WITH ITS UNIT — "790 euros a month, minimum three months" is a different sentence from "790 euros" — and get an explicit yes to that. Then collect name and email, not earlier, and call send_mentoring_offer with price_agreed true. Read its next_step: it tells you which door this deal takes. If it says book_first_session, call that tool, give them the link (the claim code is already on it — there is nothing for them to paste), state the payment terms it returns, and confirm with check_booking. If it routes to the intro instead, give them the claim code and the intro link with the code in the booking note. Either way, offer the free Engineering Leaders Community membership as a parting gift. Only ask about a public post if they answered YES to the visibility question, and even then suggest it for after their first session — they have not met Marian yet.
+10. Every conversation ends on one of FIVE doors: the paid first session (for someone who has decided), the offer, the intro call (the default on any hesitation), the slot-ping waitlist for anyone not ready, or an honest "this is not for you". That fourth door is real and you are expected to use it: this is mentoring for engineering and product leaders on leadership problems. Someone who wants to stay a hands-on IC and get better at the craft, someone whose budget is far under the cheapest package, someone who needs therapy or a lawyer — tell them straight, point them at the free community and the blog, and do not build them an offer. A clean "this isn't for you" costs nothing and is remembered well. Never let a warm visitor leave with nothing, and never sell a visitor something they told you they do not want.
 
 Tone: direct, specific, tech-community register — Marian's own style. Short answers, one question at a time. No corporate filler, no exclamation-mark enthusiasm. It is fine to say mentoring is not the right tool: someone who wants a course gets pointed to the free community; someone in crisis therapy territory gets told honestly this is not that.
 
-Money: tool responses carry fixed prices. You have no authority to change prices or invent terms. Prices exclude VAT. Marian confirms all final terms on the free intro call.
+Money: tool responses carry fixed prices. You have no authority to change prices or invent terms. Prices exclude VAT — book_first_session returns the VAT sentence that is true for this buyer, and an individual needs the gross figure, not a footnote. Never collect billing details in this conversation: you state what will be invoiced, by whom and when, and Marian sends the document. On any deal carrying a concession, Marian confirms the final terms on the free intro call.
 
 Never fabricate statistics, mentee names, or outcomes. The tools carry every number that exists.`;
 
@@ -148,6 +154,32 @@ const TOOLS = [
 			type: "object" as const,
 			properties: { offer_id: { type: "string", enum: OFFER_IDS, description: "The package under discussion, if any" } },
 			required: [],
+		},
+	},
+	{
+		name: "book_first_session",
+		description:
+			"THE CLOSE for a visitor who has already agreed the price: the direct link to book a PAID first session, skipping the intro entirely, plus the payment terms. Call it instead of book_intro_call after send_mentoring_offer succeeds. It refuses on any deal Marian settles on a call (a free-sessions concession, monthly, Mentor in Residence) and hands back the intro link — when it refuses, offer the intro without arguing. Pass the claim code so the booking matches automatically.",
+		input_schema: {
+			type: "object" as const,
+			properties: {
+				offer_id: { type: "string", enum: OFFER_IDS, description: "The agreed package" },
+				audience: { type: "string", enum: ["individual", "company"], description: "Decides which VAT sentence is true for this buyer" },
+				claim_code: { type: "string", description: "The AI16-… code from send_mentoring_offer" },
+				free_sessions_requested: { type: "integer", description: "Same value passed to send_mentoring_offer, if any" },
+				has_eu_vat_id: { type: "boolean", description: "Company outside Czechia with a valid EU VAT ID → reverse charge" },
+			},
+			required: ["offer_id", "audience"],
+		},
+	},
+	{
+		name: "check_booking",
+		description:
+			"Confirm from the CRM — not from what the visitor says — that their booking actually landed. Call it after they say they have booked. A booking takes a few seconds to arrive; if it reports nothing yet, wait and check once more, and never claim a booking you cannot see.",
+		input_schema: {
+			type: "object" as const,
+			properties: { email: { type: "string", description: "The email they booked with" } },
+			required: ["email"],
 		},
 	},
 	{
@@ -263,6 +295,37 @@ async function runTool(env: ChatEnv, name: string, input: any, side: SideEvent[]
 				// locks a 16% price that never applied to what they were buying.
 				cta: ctaBlock(input.offer_id ? String(input.offer_id) : undefined),
 			};
+		}
+		case "book_first_session": {
+			const offerId = String(input.offer_id ?? "");
+			const audience = input.audience === "company" ? "company" : "individual";
+			const check = firstSessionEligible(offerId, {
+				freeSessionsProposed: typeof input.free_sessions_requested === "number" ? input.free_sessions_requested : undefined,
+			});
+			if (!check.eligible) {
+				side.push({ type: "suggestions", chips: ["Book the intro call", "Tell me more first"] });
+				return {
+					first_session_available: false,
+					why: check.reason,
+					book_intro_call: BOOKING,
+					what_to_say: "Not a refusal and not a downgrade — this deal has terms Marian settles with a human before anything is invoiced. Say that plainly and offer the free intro.",
+				};
+			}
+			const claim = input.claim_code ? String(input.claim_code) : undefined;
+			const url = firstSessionUrl(claim);
+			side.push({ type: "first_session", booking_url: url, offer_id: offerId, claim_code: claim ?? null });
+			side.push({ type: "suggestions", chips: ["Book my first session", "What will the invoice look like?", "Actually, let's talk first"] });
+			return {
+				first_session_available: true,
+				booking_url: url,
+				what: `A paid ${meta.first_session?.minutes ?? 60}-minute first mentoring session with Marian — the real thing, not an intro. No intro call in front of it.`,
+				package: offerById(offerId)?.name,
+				payment: paymentTerms(audience, input.has_eu_vat_id === true),
+				still_offer_the_intro: `If they hesitate at any point, the free intro is still open and is the better door: ${BOOKING}`,
+			};
+		}
+		case "check_booking": {
+			return await lookupBookingStage(env as unknown as { ATTIO_TOKEN?: string }, String(input.email ?? ""));
 		}
 		case "send_mentoring_offer": {
 			const r = await submitInquiry(env, {

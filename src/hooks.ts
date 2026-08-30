@@ -1,10 +1,18 @@
 /**
- * Booking webhook: intro booked → discount locked, automated.
+ * Booking webhooks: TWO Reclaim scheduling links, one handler, two endings.
  *
- * POST /mcp/mentoring/api/booking-hook with { secret, email, name?, note? }.
- * Trigger source: Reclaim webhook if available on Marian's plan, else a Zapier
- * "booking created" zap or a Google Calendar push watch on the calendar
- * marian.coach/meet books into — anything that can POST JSON works.
+ *   POST /mcp/mentoring/api/booking-hook     ← link `.../meet-marian/mentoring`
+ *        the free 30-min intro → `intro arranged` → GA4 `call_booked`
+ *   POST /mcp/mentoring/api/mentoring-boost  ← link `.../meet-marian/mentoring-boost`
+ *        the PAID first session → `formal 1st arranged` → GA4 `first_session_booked`
+ *
+ * Both take { secret, email, name?, note? } or a raw Reclaim payload. Trigger source: a Reclaim
+ * webhook per link (Business tier; each must be ATTACHED to its link in the link editor — creating
+ * the config alone sends nothing), else a Zapier zap or a Google Calendar push watch — anything
+ * that can POST JSON works. Setup and the captured payload: _mentoring/reclaim-webhook.md.
+ *
+ * Reclaim gives a delivery 10 seconds and auto-suspends a webhook config after 24h of failures,
+ * so nothing here may block on slow work without a plan to move it to ctx.waitUntil.
  *
  * On hit: find the person's entry in the Mentoring AI Inquiries list → PATCH
  * status "Intro booked" + intro_booked_at → Slack "🔒 discount locked". All
@@ -20,9 +28,48 @@
  */
 
 import { splitName } from "./core/submit";
+import { canAdvance, type Stage } from "./core/booking";
 
 const INQUIRIES_LIST_SLUG = "mentoring_ai_inquiries";
 const PIPELINE_LIST_SLUG = "mentoring_pipeline";
+
+/**
+ * Which Reclaim scheduling link fired. One handler, two doors (2026-08-30).
+ *
+ * The two links are told apart by ROUTE, not by reading `meeting.scheduling_link_title` out of
+ * the payload — that title is a display string Marian edits in the Reclaim UI, and this codebase
+ * has already lost every pipeline write once to exactly that class of bug (the 2026-08-30
+ * `intro_arranged` → `mentee_stage` rename, which 400'd silently behind a `.catch`). A route is
+ * something we control; a third party's editable label is not.
+ *
+ *   intro → /api/booking-hook      → the free 30-min call    → `intro arranged`
+ *   boost → /api/mentoring-boost   → the PAID first session  → `formal 1st arranged`
+ */
+export type BookingKind = "intro" | "boost";
+
+const DOOR: Record<BookingKind, { stage: Stage; inquiryStatus: string; ga4Event: string; slackIcon: string; slackLabel: string }> = {
+	intro: {
+		stage: "intro arranged",
+		inquiryStatus: "Intro booked",
+		ga4Event: "call_booked",
+		slackIcon: ":lock:",
+		slackLabel: "Intro booked",
+	},
+	boost: {
+		stage: "formal 1st arranged",
+		// A SELECT option on mentoring_ai_inquiries, added via the API 2026-08-30. Attio rejects
+		// the WHOLE entry write on one unknown option value, so this string and the live schema
+		// must stay in lockstep — the four-slug outage that left the list at zero entries was the
+		// same failure mode.
+		inquiryStatus: "First session booked",
+		// A DIFFERENT conversion from call_booked. Google Ads has been optimising toward a free
+		// intro; a paid first session is the outcome that actually carries revenue, and mixing
+		// the two under one event name would make both uninterpretable.
+		ga4Event: "first_session_booked",
+		slackIcon: ":euro:",
+		slackLabel: "FIRST SESSION booked (paid, intro skipped)",
+	},
+};
 
 export type HookEnv = {
 	BOOKING_HOOK_SECRET?: string;
@@ -166,30 +213,47 @@ async function attioWrite(url: string, init: RequestInit, label: string): Promis
 	return true;
 }
 
-/** `call_booked` is a conversion, so it may only fire on the actual transition INTO `intro arranged`.
- * A re-sent or duplicated booking webhook (Reclaim retries, a Zapier replay, a reschedule) hits
- * this endpoint again with the person already parked on `intro arranged` — counting that as a second
- * conversion would inflate every ad platform's ROAS. Pass the person's `mentoring_pipeline` entry
- * (or null/undefined when they have none yet). */
-export function shouldFireCallBooked(pipeEntry: any): boolean {
+/**
+ * May this booking advance the person, and therefore fire a conversion?
+ *
+ * A conversion may only fire on an actual FORWARD transition. A re-sent or duplicated webhook
+ * (Reclaim retries, a Zapier replay, a reschedule) hits this endpoint again with the person
+ * already parked at or beyond the target stage — counting that as a second conversion would
+ * inflate every ad platform's ROAS.
+ *
+ * Rank-based since 2026-08-30, because the second door needs to move someone who already HAS a
+ * stage (`Not yet`, or `intro arranged` for a prospect who booked an intro and then bought). The
+ * old equality test could only answer the intro question. See canAdvance() in core/booking.ts for
+ * the three cases this fixes. Pass the person's `mentoring_pipeline` entry, or null/undefined
+ * when they have none — an unknown shape fails OPEN, since a duplicate conversion is a cheaper
+ * mistake than a lost one.
+ */
+export function shouldAdvance(pipeEntry: any, target: Stage): boolean {
 	if (!pipeEntry) return true;
-	const stage = pipeEntry?.entry_values?.mentee_stage?.[0]?.status?.title;
-	return stage !== "intro arranged";
+	return canAdvance(pipeEntry?.entry_values?.mentee_stage?.[0]?.status?.title, target);
 }
 
-/** GA4 Measurement Protocol body for a `call_booked` server-side conversion event. */
-export function ga4CallBookedBody(clientId: string, params: Record<string, string | number>) {
+/** Back-compat wrapper: the intro door's question, unchanged. */
+export const shouldFireCallBooked = (pipeEntry: any): boolean => shouldAdvance(pipeEntry, "intro arranged");
+
+/** GA4 Measurement Protocol body for a server-side conversion event. `call_booked` for the free
+ *  intro, `first_session_booked` for the paid first session — see DOOR above. */
+export function ga4BookingBody(eventName: string, clientId: string, params: Record<string, string | number>) {
 	return {
 		client_id: clientId,
 		non_personalized_ads: false,
-		events: [{ name: "call_booked", params: { ...params, engagement_time_msec: 1 } }],
+		events: [{ name: eventName, params: { ...params, engagement_time_msec: 1 } }],
 	};
 }
+
+/** Back-compat wrapper for the intro conversion. */
+export const ga4CallBookedBody = (clientId: string, params: Record<string, string | number>) => ga4BookingBody("call_booked", clientId, params);
 
 /** Marian's own addresses — never treat them as the visitor when scanning a booking payload. */
 const OWN_EMAILS = new Set(["marian@marian.coach", "marian@kamenistak.com", "marian@engineeringleaders.io", "leads@marian.coach"]);
 
-export async function handleBookingHook(request: Request, env: HookEnv, url: URL): Promise<Response> {
+export async function handleBookingHook(request: Request, env: HookEnv, url: URL, kind: BookingKind = "intro"): Promise<Response> {
+	const door = DOOR[kind];
 	if (!env.BOOKING_HOOK_SECRET) return json({ ok: false, error: "hook_not_configured" }, 503);
 
 	const raw = await request.text().catch(() => "");
@@ -237,7 +301,21 @@ export async function handleBookingHook(request: Request, env: HookEnv, url: URL
 
 	// Tolerant extraction: explicit fields first, then a raw-text scan over whatever payload
 	// the trigger sent (Reclaim event JSON, Zapier mapping, manual curl).
-	const claimFromNote = raw.match(/AI16-\d{6}-[0-9A-F]{8}/i)?.[0]?.toUpperCase() ?? null;
+	// Claim code, best source first:
+	//   1. custom_data.data.claim — Reclaim forwards `?data-claim=` from the booking URL into the
+	//      signed payload with the prefix stripped, so book_first_session can put the code there
+	//      itself and nothing depends on the prospect remembering to paste anything.
+	//   2. the free-text booking note — the intro door's original mechanism, kept because the
+	//      `data-` shape is UNVERIFIED on api_version v2026-04-13 (the payload captured in
+	//      reclaim-webhook.md predates it) and because a booker can still paste a code by hand.
+	// Both are validated against the same AI16 pattern; a malformed custom_data value falls
+	// through to the note rather than poisoning the lookup.
+	const claimRe = /AI16-\d{6}-[0-9A-F]{8}/i;
+	const claimFromData = (() => {
+		const v = body?.meeting?.custom_data?.data?.claim;
+		return typeof v === "string" && claimRe.test(v) ? v.match(claimRe)![0].toUpperCase() : null;
+	})();
+	const claimFromNote = claimFromData ?? raw.match(claimRe)?.[0]?.toUpperCase() ?? null;
 	let email = (body.email ?? body?.meeting?.attendee?.attendee_email ?? "").trim().toLowerCase();
 	if (!email) {
 		const found = raw.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi) ?? [];
@@ -343,29 +421,31 @@ export async function handleBookingHook(request: Request, env: HookEnv, url: URL
 							if (pipeData?.data) pipeEntry = pipeData.data;
 						}
 					}
-					const isTransition = shouldFireCallBooked(pipe ? pipeEntry : null);
+					const isTransition = shouldAdvance(pipe ? pipeEntry : null, door.stage);
 					isFirstBooking = isTransition;
 					if (pipe) {
-						// Already on Intro call → the PATCH would be a no-op write. Skip it.
+						// `mentee_stage` drives the Mentoring flow kanban and Marian moves those cards by
+						// hand, so a booking may only ever push a card FORWARD. The rank test does both
+						// jobs at once: it still refuses to drag someone on `mentoring` back to
+						// `intro arranged` on a reschedule, and it now lets a paid booking lift someone
+						// from `Not yet` or `intro arranged` up to `formal 1st arranged`.
+						//
+						// This replaces a seed-only-when-blank check. That check was strictly weaker: it
+						// also froze every wizard submission on `Not yet` forever, because submit.ts
+						// writes that value on create and it is not blank.
 						if (isTransition) {
-							// `mentee_stage` drives the Mentoring flow kanban and Marian moves those cards by
-							// hand. Seed it only when it is still blank — someone already on `mentoring` who
-							// books through the intro link must not be dragged back to `intro arranged`.
-							const onBoard = pipeEntry?.entry_values?.mentee_stage?.[0]?.status?.title;
-							if (!onBoard) {
-								await attioWrite(`https://api.attio.com/v2/lists/${PIPELINE_LIST_SLUG}/entries/${pipe.entry_id}`, {
-									method: "PATCH",
-									headers,
-									body: JSON.stringify({ data: { entry_values: { mentee_stage: "intro arranged" } } }),
-								}, "pipeline stage");
-							}
+							await attioWrite(`https://api.attio.com/v2/lists/${PIPELINE_LIST_SLUG}/entries/${pipe.entry_id}`, {
+								method: "PATCH",
+								headers,
+								body: JSON.stringify({ data: { entry_values: { mentee_stage: door.stage } } }),
+							}, "pipeline stage");
 						}
 					} else {
 						await attioWrite(`https://api.attio.com/v2/lists/${PIPELINE_LIST_SLUG}/entries`, {
 							method: "POST",
 							headers,
 							body: JSON.stringify({
-								data: { parent_record_id: personId, parent_object: "people", entry_values: { mentee_stage: "intro arranged", added_via: "Manual", source: "booking" } },
+								data: { parent_record_id: personId, parent_object: "people", entry_values: { mentee_stage: door.stage, added_via: "Manual", source: `booking:${kind}` } },
 							}),
 						}, "pipeline create");
 					}
@@ -385,7 +465,7 @@ export async function handleBookingHook(request: Request, env: HookEnv, url: URL
 						await fetch(`https://www.google-analytics.com/mp/collect?measurement_id=${env.GA4_MEASUREMENT_ID}&api_secret=${env.GA4_API_SECRET}`, {
 							method: "POST",
 							body: JSON.stringify(
-								ga4CallBookedBody(cid, { source: val("first_touch_source") || "direct", campaign: val("first_touch_campaign") || "", gclid: val("gclid") || "" })
+								ga4BookingBody(door.ga4Event, cid, { source: val("first_touch_source") || "direct", campaign: val("first_touch_campaign") || "", gclid: val("gclid") || "" })
 							),
 						}).catch((e) => console.error("ga4 mp exception", String(e)));
 					}
@@ -408,7 +488,7 @@ export async function handleBookingHook(request: Request, env: HookEnv, url: URL
 				const patchRes = await fetch(`https://api.attio.com/v2/lists/${INQUIRIES_LIST_SLUG}/entries/${entryId}`, {
 					method: "PATCH",
 					headers,
-					body: JSON.stringify({ data: { entry_values: { status: "Intro booked" } } }),
+					body: JSON.stringify({ data: { entry_values: { status: door.inquiryStatus } } }),
 				});
 				locked = patchRes.ok;
 				if (!patchRes.ok) console.error("booking-hook attio patch failed", patchRes.status, await patchRes.text().catch(() => ""));
@@ -452,17 +532,23 @@ export async function handleBookingHook(request: Request, env: HookEnv, url: URL
 			method: "POST",
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({
-				text: `${isTestBooking ? ":test_tube: TEST booking (nothing written)" : ":lock: Intro booked"} — *${matchedName}*${claimFromNote ? ` · claim ${claimFromNote}` : ""}${
+				text: `${isTestBooking ? `:test_tube: TEST ${kind} booking (nothing written)` : `${door.slackIcon} ${door.slackLabel}`} — *${matchedName}*${claimFromNote ? ` · claim ${claimFromNote}` : ""}${
 					locked
-						? " · Attio entry flipped to Intro booked"
+						? ` · Attio entry flipped to ${door.inquiryStatus}`
 						: createdPerson
-							? " · new Person created and added to the pipeline as Intro call (booked direct, no wizard inquiry)"
+							? ` · new Person created and added to the pipeline as ${door.stage} (booked direct, no wizard inquiry)`
 							: " · no matching Attio entry found (check manually)"
-				}${prepEmailed ? " · prep email sent" : isFirstBooking ? " · *prep email NOT sent*" : ""}`,
+				}${prepEmailed ? " · prep email sent" : isFirstBooking ? " · *prep email NOT sent*" : ""}${
+					// The paid door has a manual tail the free one does not: nothing in code issues an
+					// invoice. flow/offer-pdf-fakturoid.md is a runbook Marian runs by hand, and its
+					// old trigger ("after the intro call") no longer fires for these people — so the
+					// Slack line has to be the trigger, or the booking is the last anyone hears of it.
+					kind === "boost" && !isTestBooking ? "\n:receipt: *Invoice this one* — flow/offer-pdf-fakturoid.md, sole trader IČO 06093175. No intro call is coming." : ""
+				}`,
 				unfurl_links: false,
 			}),
 		}).catch((e) => console.error("booking-hook slack exception", String(e)));
 	}
 
-	return json({ ok: true, locked, created_person: createdPerson, claim: claimFromNote, prep_emailed: prepEmailed });
+	return json({ ok: true, path: kind, stage: door.stage, locked, created_person: createdPerson, claim: claimFromNote, prep_emailed: prepEmailed });
 }
