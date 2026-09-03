@@ -126,6 +126,50 @@ export function refreshableValues(a: Attribution): Record<string, string> {
 	return out;
 }
 
+/**
+ * The first touch for an inquiry that arrived through an AI assistant.
+ *
+ * MCP clients carry no cookie, so `submitInquiry` skipped the whole attribution block for
+ * channel "mcp" and the person landed in Attio with NO first touch at all — shaped exactly like
+ * a direct visit and permanently un-attributed. For an inquiry that came in through an
+ * assistant the MCP endpoint really is the first touch: there is no earlier one being lost.
+ *
+ * `source: "mcp"` matches the `?ref=mcp` tag the web funnel already uses, so assistant traffic
+ * reads as one channel whether it converted through a tool call or through the site.
+ */
+export const MCP_FIRST_TOUCH = {
+	first_touch_source: "mcp",
+	first_touch_medium: "ai_assistant",
+	first_touch_campaign: "mcp-mentoring-inquiry-builder",
+	first_touch_url: "https://www.marian.coach/mcp/mentoring",
+} as const;
+
+/**
+ * Everything we are willing to write to the person's Attio record for THIS submission.
+ *
+ * Two guards, both load-bearing:
+ * - The synthetic MCP touch stays behind `hasFirstTouch`, same as the cookie path. Someone who
+ *   read a post in March and only asked their assistant in June keeps the March source. Writing
+ *   it unconditionally is the `first_touch_source='app.reclaim.ai'` failure again: a
+ *   self-referral overwriting the real origin.
+ * - It is gated on `channel === "mcp"`, not merely on a missing cookie. A chat visitor who
+ *   blocks cookies also arrives with `attribution` undefined, and labelling them "mcp" would
+ *   invent a channel they never used.
+ */
+export function attributionValues(
+	channel: "chat" | "mcp",
+	attribution: Attribution | undefined,
+	existing: any,
+	now: Date,
+): Record<string, string> {
+	const attributed = hasFirstTouch(existing);
+	if (attribution) {
+		return { ...(attributed ? {} : firstTouchValues(attribution)), ...refreshableValues(attribution) };
+	}
+	if (channel === "mcp" && !attributed) return { ...MCP_FIRST_TOUCH, first_touch_at: now.toISOString() };
+	return {};
+}
+
 export function isMenteeLeadSource(source: string): boolean {
 	return !source.startsWith("blog-");
 }

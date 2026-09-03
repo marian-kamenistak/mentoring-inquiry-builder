@@ -14,7 +14,7 @@
  * /mcp/mentoring/api/verify without any datastore — the Attio entry is primary evidence,
  * the HMAC is the independent audit trail.
  */
-import { type Attribution, firstTouchValues, refreshableValues, hasFirstTouch, laneFromCampaign } from "./attribution";
+import { type Attribution, attributionValues, laneFromCampaign } from "./attribution";
 import {
 	aiDiscount,
 	clampConcession,
@@ -102,6 +102,26 @@ export type SubmitResult =
 			test: boolean;
 	  }
 	| { ok: false; error: string };
+
+/**
+ * `fetch` resolves on a 4xx, so a bare `.catch` on an Attio write sees nothing when Attio
+ * actually rejects it — and Attio 400s the WHOLE request on a single unknown slug. Every
+ * fire-and-forget write goes through here instead, because `console.error` is what the daily
+ * 4mc-pipeline-health job alerts on: a silent 400 is a lead lost with a green dashboard.
+ */
+async function attioWrite(label: string, url: string, init: RequestInit): Promise<boolean> {
+	try {
+		const res = await fetch(url, init);
+		if (!res.ok) {
+			console.error(`attio ${label} failed`, res.status, await res.text().catch(() => ""));
+			return false;
+		}
+		return true;
+	} catch (e) {
+		console.error(`attio ${label} exception`, String(e));
+		return false;
+	}
+}
 
 export function splitName(full: string): { first: string; last: string } {
 	const clean = full.trim().replace(/\s+/g, " ");
@@ -292,17 +312,15 @@ export async function submitInquiry(env: SubmitEnv, input: SubmitInput): Promise
 						const personId: string | undefined = personRec?.data?.id?.record_id;
 						if (!personId) return null;
 
-						// Attribution from the mc_attr cookie (chat channel only — MCP clients have no cookie).
-						// First touch is written once; click ids, the GA client id and last touch describe THIS
-						// conversion and are refreshed every time.
-						const attrValues = input.attribution
-							? { ...(hasFirstTouch(personRec?.data?.values) ? {} : firstTouchValues(input.attribution)), ...refreshableValues(input.attribution) }
-							: {};
+						// Attribution from the mc_attr cookie, or a synthetic MCP first touch when the caller
+						// is an assistant and has no cookie to carry one. First touch is written once; click
+						// ids, the GA client id and last touch describe THIS conversion and refresh every time.
+						const attrValues = attributionValues(channel, input.attribution, personRec?.data?.values, now);
 						if (Object.keys(attrValues).length) {
-							await fetch(`https://api.attio.com/v2/objects/people/records/${personId}`, {
+							await attioWrite("attribution patch", `https://api.attio.com/v2/objects/people/records/${personId}`, {
 								method: "PATCH", headers,
 								body: JSON.stringify({ data: { values: attrValues } }),
-							}).catch((e) => console.error("attio attribution patch exception", String(e)));
+							});
 						}
 
 						// B2B: company find-or-create + record-reference link (never a string — 400s).
@@ -329,13 +347,13 @@ export async function submitInquiry(env: SubmitEnv, input: SubmitInput): Promise
 								}
 							}
 							if (companyId) {
-								await fetch(`https://api.attio.com/v2/objects/people/records/${personId}`, {
+								await attioWrite("person-company link", `https://api.attio.com/v2/objects/people/records/${personId}`, {
 									method: "PATCH",
 									headers,
 									body: JSON.stringify({
 										data: { values: { company: [{ target_object: "companies", target_record_id: companyId }] } },
 									}),
-								}).catch((e) => console.error("attio person-company link exception", String(e)));
+								});
 							}
 						}
 
@@ -401,14 +419,13 @@ export async function submitInquiry(env: SubmitEnv, input: SubmitInput): Promise
 						const pipeVals: Record<string, unknown> = { sku: offer.id, value_eur: finalPrice, ...(cmp ? { campaign: cmp } : {}), ...(lane ? { lane } : {}) };
 						const pipe = (entriesData.data ?? []).find((e: any) => e.list_api_slug === PIPELINE_LIST_SLUG);
 						if (pipe) {
-							await fetch(`https://api.attio.com/v2/lists/${PIPELINE_LIST_SLUG}/entries/${pipe.entry_id}`, { method: "PATCH", headers, body: JSON.stringify({ data: { entry_values: pipeVals } }) })
-								.catch((e) => console.error("attio pipeline update exception", String(e)));
+							await attioWrite("pipeline update", `https://api.attio.com/v2/lists/${PIPELINE_LIST_SLUG}/entries/${pipe.entry_id}`, { method: "PATCH", headers, body: JSON.stringify({ data: { entry_values: pipeVals } }) });
 						} else {
-							await fetch(`https://api.attio.com/v2/lists/${PIPELINE_LIST_SLUG}/entries`, {
+							await attioWrite("pipeline create", `https://api.attio.com/v2/lists/${PIPELINE_LIST_SLUG}/entries`, {
 								method: "POST",
 								headers,
 								body: JSON.stringify({ data: { parent_record_id: personId, parent_object: "people", entry_values: { mentee_stage: "Not yet", added_via: "AI wizard", source: channel, ...pipeVals } } }),
-							}).catch((e) => console.error("attio pipeline create exception", String(e)));
+							});
 						}
 
 						return inquiryResult;

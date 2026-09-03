@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseAttributionCookie, firstTouchValues, refreshableValues, isMenteeLeadSource, laneFromCampaign, ATTR_COOKIE } from "../src/core/attribution";
+import { parseAttributionCookie, firstTouchValues, refreshableValues, isMenteeLeadSource, laneFromCampaign, attributionValues, ATTR_COOKIE } from "../src/core/attribution";
 
 const sample = {
 	v: 1,
@@ -75,5 +75,36 @@ describe("isMenteeLeadSource / laneFromCampaign", () => {
 		expect(laneFromCampaign("paid-d-mir")).toBe("D · MiR");
 		expect(laneFromCampaign("c1-cz")).toBeNull();
 		expect(laneFromCampaign(undefined)).toBeNull();
+	});
+});
+
+describe("attributionValues — MCP callers carry no cookie", () => {
+	const NOW = new Date("2026-09-03T09:00:00.000Z");
+	const attributed = { first_touch_at: ["2026-03-01T10:00:00.000Z"], first_touch_source: ["google"] };
+	const cookie = parseAttributionCookie(header)!;
+
+	it("labels an MCP inquiry from an unknown person as an MCP first touch", () => {
+		const v = attributionValues("mcp", undefined, {}, NOW);
+		expect(v.first_touch_source).toBe("mcp");
+		expect(v.first_touch_medium).toBe("ai_assistant");
+		expect(v.first_touch_url).toBe("https://www.marian.coach/mcp/mentoring");
+		expect(v.first_touch_at).toBe("2026-09-03T09:00:00.000Z");
+	});
+
+	it("NEVER overwrites a real first touch — read a post in March, asked an assistant in June", () => {
+		expect(attributionValues("mcp", undefined, attributed, NOW)).toEqual({});
+	});
+
+	it("does not label a cookie-less CHAT visitor as MCP", () => {
+		expect(attributionValues("chat", undefined, {}, NOW)).toEqual({});
+	});
+
+	it("cookie path is unchanged: first touch written once, refreshables always", () => {
+		const fresh = attributionValues("chat", cookie, {}, NOW);
+		expect(fresh.first_touch_source).toBe("linkedin");
+		expect(fresh.last_touch_source).toBe("google");
+		const repeat = attributionValues("chat", cookie, attributed, NOW);
+		expect(repeat.first_touch_source).toBeUndefined();
+		expect(repeat.last_touch_source).toBe("google");
 	});
 });

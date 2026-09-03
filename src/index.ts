@@ -100,6 +100,27 @@ export class MentoringInquiryBuilder extends McpAgent<Env, unknown, McpGeo> {
 		});
 
 		this.server.registerTool(
+			"get_started",
+			{
+				title: "Start here — what can this MCP server do?",
+				annotations: { ...READ_ONLY },
+				description:
+					"Call this for a greeting (hi, hello), a connectivity/liveness test, 'what can you do', or any message too general to match a specific tool below. Returns the full menu of real questions this server answers, each mapped to the tool name that answers it. For someone actually considering mentoring, skip straight to get_mentoring_options instead.",
+				inputSchema: {},
+			},
+			async () => {
+				const menu = TOOL_DOCS.map(
+					(d) => `- "${d.question}" → \`${d.name}\`: ${d.description}`,
+				).join("\n");
+				return toolResult({
+					what: "This is the Mentoring AI Inquiry Wizard for marian.coach — it walks a visitor from options to a formal itemized offer for 1:1 engineering-leadership mentoring with Marian Kamenistak.",
+					menu,
+					start_here: "For anyone actually considering mentoring, call get_mentoring_options next.",
+				});
+			},
+		);
+
+		this.server.registerTool(
 			"get_mentoring_options",
 			{
 				title: "Start a mentoring inquiry with Marian Kamenistak — the 16-minute wizard",

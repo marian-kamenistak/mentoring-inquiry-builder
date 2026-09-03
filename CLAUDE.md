@@ -3,7 +3,8 @@
 ## What this is
 Mentoring AI Inquiry Wizard for the **mc** stream: authless MCP server at
 `https://www.marian.coach/mcp/mentoring` plus the chat backend for `/mentoring-chat/` on
-marian.coach. Eight tools walk a visitor from options to a formal itemized offer (10% AI-channel
+marian.coach. `get_started` routes a greeting/test/unclear message to the right tool below;
+eight more walk a visitor from options to a formal itemized offer (10% AI-channel
 discount on every package, floor 296 EUR/session, prices computed server-side only) and then to a booked session.
 Read-only REST at `/mcp/mentoring/api/openapi.json`. Receives Reclaim booking webhooks on **two**
 routes, one per scheduling link.
@@ -43,7 +44,7 @@ free-sessions concession are excluded because the catalog says Marian settles th
 ## Definition of done
 - [ ] `npm test` and `npm run type-check` exit 0
 - [ ] `wrangler deploy` exits 0
-- [ ] `tools/list` POST to `https://www.marian.coach/mcp/mentoring` returns **9** — the 8 mentoring tools plus `get_more_tools`, which `instrumentMcpUsage` injects. Public copy counts the 8; the wire count is 9. GET returns 200 HTML
+- [ ] `tools/list` POST to `https://www.marian.coach/mcp/mentoring` returns **10** — the 9 mentoring tools (incl. `get_started`) plus `get_more_tools`, which `instrumentMcpUsage` injects. Public copy counts the 9; the wire count is 10. GET returns 200 HTML
 - [ ] Both booking routes answer with a `test@` address: `POST /api/booking-hook` → `path:"intro"`, `POST /api/mentoring-boost` → `path:"boost"`; a wrong secret 403s and a GET 405s
 - [ ] `wrangler tail --format json` for 60s: zero `console.error`, zero exceptions
 - [ ] Sibling `https://www.marian.coach/mcp` still answers (nesting intact)
