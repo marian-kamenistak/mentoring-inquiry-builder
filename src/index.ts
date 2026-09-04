@@ -39,6 +39,7 @@ import {
 	type McpUsageConfig,
 	type McpUsageEnv,
 } from "./mcp-usage";
+import { getMoreToolsResult } from "@posthog/mcp";
 
 const READ_ONLY = {
 	readOnlyHint: true,
@@ -76,6 +77,26 @@ function toolResult(payload: Record<string, unknown>, opts: { priced?: boolean; 
 	};
 }
 
+/** Shared by both `get_started` and `get_more_tools`'s greeting branch (see below) — one
+ *  source of truth for the menu text so the two entry points never drift apart. */
+function getStartedResult() {
+	const menu = TOOL_DOCS.map(
+		(d) => `- "${d.question}" → \`${d.name}\`: ${d.description}`,
+	).join("\n");
+	return toolResult({
+		what: "This is the Mentoring AI Inquiry Wizard for marian.coach — it walks a visitor from options to a formal itemized offer for 1:1 engineering-leadership mentoring with Marian Kamenistak.",
+		menu,
+		start_here: "For anyone actually considering mentoring, call get_mentoring_options next.",
+	});
+}
+
+/** Matches a bare liveness/greeting ping — "hi", "test", "are you there" — as opposed to a
+ *  real described capability gap. Deliberately an exact (trimmed, punctuation-stripped)
+ *  match, not a "starts with": a genuine gap report is a sentence, and a loose prefix match
+ *  would swallow real ones that happen to start with a greeting word. */
+const GREETING_PING =
+	/^(hi+|hello+|hey+|yo+|sup|howdy|hola|ahoy|ping|test(ing)?|are you (there|working|alive)|is (this|anyone) (working|there)|still there|you there|greetings|what('?s| is) up)[.!?\s]*$/i;
+
 /** See src/mcp-usage.ts. PostHog key = the marian.coach project, the same one the site's own
  *  analytics writes to, so MCP tool calls and `?ref=mcp` web traffic sit in one funnel. */
 const USAGE_CONFIG: McpUsageConfig = {
@@ -108,16 +129,26 @@ export class MentoringInquiryBuilder extends McpAgent<Env, unknown, McpGeo> {
 					"Call this for a greeting (hi, hello), a connectivity/liveness test, 'what can you do', or any message too general to match a specific tool below. Returns the full menu of real questions this server answers, each mapped to the tool name that answers it. For someone actually considering mentoring, skip straight to get_mentoring_options instead.",
 				inputSchema: {},
 			},
-			async () => {
-				const menu = TOOL_DOCS.map(
-					(d) => `- "${d.question}" → \`${d.name}\`: ${d.description}`,
-				).join("\n");
-				return toolResult({
-					what: "This is the Mentoring AI Inquiry Wizard for marian.coach — it walks a visitor from options to a formal itemized offer for 1:1 engineering-leadership mentoring with Marian Kamenistak.",
-					menu,
-					start_here: "For anyone actually considering mentoring, call get_mentoring_options next.",
-				});
+			async () => getStartedResult(),
+		);
+
+		this.server.registerTool(
+			"get_more_tools",
+			{
+				title: "More tools? Check here first — also answers a plain hello/liveness ping",
+				annotations: { ...READ_ONLY },
+				description:
+					"Check for additional tools whenever your task might benefit from specialized capabilities, even if existing tools could work as a fallback. Also the right tool for a bare greeting (hi, hello), a connectivity/liveness test, or any message too general to match a specific tool below — pass it as `context` and this returns the full menu instead of a dead end.",
+				inputSchema: {
+					context: z
+						.string()
+						.describe(
+							"A description of your goal and what kind of tool would help accomplish it, OR a plain greeting/liveness ping like 'hi' or 'test'.",
+						),
+				},
 			},
+			async ({ context }) =>
+				GREETING_PING.test(context.trim()) ? getStartedResult() : { content: getMoreToolsResult().content },
 		);
 
 		this.server.registerTool(
@@ -341,7 +372,7 @@ export class MentoringInquiryBuilder extends McpAgent<Env, unknown, McpGeo> {
 						});
 					}
 				}
-				const result = await submitInquiry(this.env as SubmitEnv, { ...input, channel: "mcp" });
+				const result = await submitInquiry(this.env as unknown as SubmitEnv, { ...input, channel: "mcp" });
 				if (!result.ok) return toolResult({ error: result.error }, { offerId: input.offer_id });
 				return toolResult(
 					{
