@@ -55,6 +55,12 @@
 			},
 		],
 	},
+	"kv_namespaces": [
+		{
+			"binding": "MCP_SESSIONS",
+			"id": "f459fd36614740fcbe313953349d7776",
+		},
+	],
 	// Cloudflare Workers rate limiting (open beta binding). Keyed by caller IP in code.
 	// OFFER: send_mentoring_offer only — the informational tools are the discovery surface and
 	// stay open. CHAT: per-message cap on the widget backend; Turnstile+session gate the
