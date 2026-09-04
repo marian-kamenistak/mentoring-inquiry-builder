@@ -1,0 +1,638 @@
+{
+  "generatedAt": "[fixture \u2014 see src/data/mentoring-catalog.json for the real, generated file]",
+  "source": "FIXTURE \u2014 not the real catalog.yaml source",
+  "meta": {
+    "currency": "EUR",
+    "vat": "excluded",
+    "entity": "Marian Kamenistak, sole trader (ICO 06093175)",
+    "vat_treatment": {
+      "registered": true,
+      "vat_id": "CZ7909287980",
+      "cz_rate_pct": 21,
+      "eu_business_with_vat_id": "Reverse charge: no VAT is added to the invoice and your company accounts for it (Art. 44, Council Directive 2006/112/EC). Your valid EU VAT ID is required before the invoice is issued.",
+      "czech_client": "Czech VAT at 21% is added.",
+      "individual": "Czech VAT at 21% is added \u2014 as a private individual you pay the gross figure.",
+      "note": "[redacted for the public repo \u2014 internal sourcing note, not published]"
+    },
+    "booking_url": "https://www.marian.coach/meet",
+    "pricing_url": "https://www.marian.coach/pricing/",
+    "time_promise": {
+      "minutes": 16,
+      "claim": "No more than 16 minutes from first question to a formal itemized offer in the inbox. 16 minutes, 16 percent.",
+      "is_ceiling": true
+    },
+    "intro": {
+      "price": 0,
+      "minutes": 30,
+      "url": "https://www.marian.coach/meet",
+      "rule": "Free 30-minute intro call. Not a gate on any price: the AI-onboarding rate is claimed by building the inquiry, and the call is booked when the mentee wants one."
+    },
+    "first_session": {
+      "url": "https://app.reclaim.ai/m/meet-marian/mentoring-boost",
+      "minutes": 60,
+      "eligible_offers": [
+        "single-session",
+        "first-quarter",
+        "two-quarters"
+      ],
+      "rule": "Paid 60-minute first session, booked directly, no intro call in front of it. Offered ONLY after the visitor agrees the exact price on an eligible package with no concession attached. Everyone else \u2014 undecided, negotiating, monthly, or asking to talk first \u2014 gets the free intro instead. Never present this as the only door.",
+      "payment_terms": "Invoiced after the session is booked, payable before it takes place. The invoice comes from the sole trader (see meta.entity), states the net price and the VAT rule that applies to this buyer, and is sent by Marian \u2014 never collected in this conversation."
+    },
+    "guarantee": {
+      "threshold": 7,
+      "scale": 10,
+      "rule": "Any session rated below 7/10 is free. The average across 300+ reviews is 9.2/10.",
+      "note": "[redacted for the public repo \u2014 internal sourcing note, not published]"
+    },
+    "stop_rule": "If it's not working by session 2, we stop and the rest is on Marian.",
+    "member_rate": {
+      "pct": 10,
+      "same_as": "ai_channel",
+      "who": "ELC community members (all tiers, incl. free Stardust)",
+      "note": "[redacted for the public repo \u2014 internal sourcing note, not published]"
+    },
+    "slots": {
+      "open": 5,
+      "cap": 14,
+      "proof": "[redacted for the public repo \u2014 internal sourcing note, not published]",
+      "rule": "AVAILABILITY ONLY. How many parallel 1:1s Marian has room for, shown on the homepage capacity chart. It does NOT limit any price: the AI-onboarding rate is open to everyone who comes through the channel.",
+      "as_of": "2026-01-01"
+    },
+    "discounts": {
+      "ai_channel": {
+        "pct": 10,
+        "channels": [
+          "chat",
+          "mcp"
+        ],
+        "applies_to": [
+          "single-session",
+          "first-quarter",
+          "two-quarters",
+          "monthly",
+          "mentor-in-residence"
+        ],
+        "floor_eur_per_session": 296,
+        "lead_with": "Lead with the package price and the free sessions, then the 10%: a quarter is 6 sessions for 1,975 EUR (5 paid + 1 free), 1,778 through the AI door. Same rate whether you or your company pays. No cap, no seat count, no booking required to qualify."
+      }
+    },
+    "negotiation": {
+      "audience": [
+        "company"
+      ],
+      "triggers": [
+        "3+ sponsored leaders on first-quarter packs (>= 5,925 EUR)",
+        "mentor-in-residence"
+      ],
+      "concession": "free_sessions",
+      "max_free_sessions": 8,
+      "progression": [
+        2,
+        4,
+        8
+      ],
+      "floor_eur_per_session": 296,
+      "rule": "Never on single-leader deals. Never a rate cut. Proposal only \u2014 Marian confirms final terms on the intro call. Anything beyond this: refuse and route to the intro call.",
+      "floor_applies_to_free_sessions": false,
+      "floor_scope": "The 296 EUR floor is a floor on the charged rate. A qualifying B2B deal may add up to 8 sessions at no charge on top; the resulting effective rate across all sessions is lower, is always computed and shown, and is confirmed by Marian on the intro call."
+    },
+    "cross_sell": {
+      "id": "elc-free-membership",
+      "name": "Free ELC community membership (Stardust)",
+      "url": "https://www.engineeringleaders.io/partner/membership/free/",
+      "when": "after_offer_sent",
+      "pitch": "Whether or not we work together \u2014 join the community Marian founded. Free, and members get the AI-door price on every package.",
+      "items": [
+        "Seats at 12 monthly meetups \u2014 120+ engineering leaders in the room, Prague, Brno, Bratislava, Krakow",
+        "Leaders' Brief newsletter \u2014 one framework you can run on Monday, 2,800+ subscribers, 74% open rate",
+        "ELC community Slack \u2014 ask 3,100+ leaders before you decide",
+        "Knowledge base and AI Toolkit \u2014 frameworks, recorded talks, study paths",
+        "Talks from every meetup on YouTube",
+        "Learning feed for your team channel"
+      ]
+    }
+  },
+  "offers": [
+    {
+      "id": "single-session",
+      "name": "Single session",
+      "price": 395,
+      "unit": "per_session",
+      "public": "line",
+      "per_leader": false,
+      "multi_leader": false,
+      "sessions": 1,
+      "free_sessions": 0,
+      "per_session": 395,
+      "effective_per_session": 395,
+      "ai_channel_price": 356,
+      "value": "One 60-minute session with your context sent beforehand. Continue within 30 days and it counts toward a quarter.",
+      "program": {
+        "cadence_days": 0,
+        "session_minutes": 60
+      }
+    },
+    {
+      "id": "first-quarter",
+      "name": "One quarter",
+      "price": 1975,
+      "public": "card",
+      "per_leader": true,
+      "multi_leader": true,
+      "sessions": 6,
+      "free_sessions": 1,
+      "per_session": 395,
+      "effective_per_session": 329,
+      "duration_months": 3,
+      "ai_channel_price": 1778,
+      "installments": {
+        "count": 3,
+        "eur": 659,
+        "ai_channel_eur": 593
+      },
+      "value": "6 sessions over 3 months, 5 paid + 1 free. Where most mentees start. Priority scheduling, guaranteed slot.",
+      "badge": "Most mentees start here",
+      "program": {
+        "cadence_days": 14,
+        "session_minutes": 60,
+        "checkpoint_after_session": 3,
+        "closing_review": true
+      }
+    },
+    {
+      "id": "two-quarters",
+      "name": "Two quarters",
+      "price": 3950,
+      "public": "card",
+      "per_leader": true,
+      "multi_leader": true,
+      "sessions": 12,
+      "free_sessions": 2,
+      "per_session": 395,
+      "effective_per_session": 329,
+      "duration_months": 6,
+      "ai_channel_price": 3555,
+      "installments": {
+        "count": 6,
+        "eur": 659,
+        "ai_channel_eur": 593
+      },
+      "value": "12 sessions over 6 months, 10 paid + 2 free, plus async access between sessions. For a seat that stays hard past the first quarter.",
+      "program": {
+        "cadence_days": 14,
+        "session_minutes": 60,
+        "async_access": true,
+        "checkpoint_after_session": 6,
+        "closing_review": true
+      }
+    },
+    {
+      "id": "monthly",
+      "name": "Continuous sparring partner",
+      "price": 790,
+      "unit": "per_month",
+      "public": "card",
+      "per_leader": false,
+      "multi_leader": false,
+      "sessions": 2,
+      "free_sessions": 0,
+      "per_session": 395,
+      "effective_per_session": 395,
+      "ai_channel_price": 711,
+      "value": "2 sessions a month plus async access. Cancel monthly after month 3.",
+      "commitment": {
+        "sessions_are": "per_month",
+        "minimum_months": 3,
+        "recurring": true,
+        "terms": "Recurring monthly. Minimum 3 months (3 \u00d7 \u20ac711 = \u20ac2,133 through the AI door; \u20ac790/month at list, so \u20ac2,370), then cancel any month. Billed monthly in advance; Marian confirms the billing day on the intro call."
+      },
+      "program": {
+        "cadence_days": 15,
+        "session_minutes": 60,
+        "async_access": true
+      }
+    },
+    {
+      "id": "mentor-in-residence",
+      "name": "Mentor in Residence",
+      "price": 5925,
+      "ai_channel_price": 5333,
+      "unit": "per_quarter",
+      "public": "b2b",
+      "per_leader": false,
+      "multi_leader": true,
+      "sessions": 18,
+      "free_sessions": 3,
+      "per_session": 395,
+      "effective_per_session": 329,
+      "audience": "company",
+      "value": "Quarterly B2B engagement: 18 sessions across your leaders. Quarters start with the calendar \u2014 Jan, Apr, Jul, Oct.",
+      "note": "[redacted for the public repo \u2014 internal sourcing note, not published]",
+      "commitment": {
+        "sessions_are": "pooled_per_quarter",
+        "recurring": false,
+        "terms": "One calendar quarter. The 18 sessions are a pool shared across the sponsored leaders \u2014 not 18 each. Quarters start Jan, Apr, Jul, Oct."
+      },
+      "program": {
+        "cadence_days": 5,
+        "session_minutes": 60,
+        "async_access": true
+      }
+    }
+  ],
+  "focus_areas": [
+    {
+      "id": "ic-to-manager",
+      "label": "IC to manager \u2014 staff engineer taking the leadership step"
+    },
+    {
+      "id": "new-engineering-manager",
+      "label": "First 12 months as an engineering manager"
+    },
+    {
+      "id": "em-to-director",
+      "label": "EM to Director/VP \u2014 leading through managers"
+    },
+    {
+      "id": "scaling-org",
+      "label": "Scaling the org \u2014 team splits, structure, 8 to 80 growth"
+    },
+    {
+      "id": "exec-communication",
+      "label": "Executive presence and managing upward"
+    },
+    {
+      "id": "hiring-mis-hires",
+      "label": "Hiring, mis-hires and hard people calls"
+    },
+    {
+      "id": "delivery-performance",
+      "label": "Delivery, estimates and team performance"
+    },
+    {
+      "id": "ai-org-adoption",
+      "label": "Leading an org where AI agents do a share of the work"
+    },
+    {
+      "id": "career-next-role",
+      "label": "Career strategy \u2014 promotion, next role, negotiation"
+    },
+    {
+      "id": "founder-cto-sparring",
+      "label": "Founder/CTO sparring \u2014 roadmap, board, technical strategy"
+    },
+    {
+      "id": "leading-the-function",
+      "label": "Leading the whole function \u2014 domain ownership, strategy, a seat at the table"
+    },
+    {
+      "id": "visibility-personal-brand",
+      "label": "Visibility \u2014 speaking, personal brand, being known outside your team"
+    },
+    {
+      "id": "negotiation-money-talk",
+      "label": "Talking money \u2014 your pitch, business language, what you are worth"
+    }
+  ],
+  "motivations": [
+    {
+      "id": "just-promoted",
+      "label": "Just promoted or about to be \u2014 don't want to learn by breaking things"
+    },
+    {
+      "id": "stuck-plateau",
+      "label": "Stuck \u2014 same fires every week, growth stalled"
+    },
+    {
+      "id": "scale-jump",
+      "label": "The org is scaling faster than I am"
+    },
+    {
+      "id": "people-problem",
+      "label": "A specific people problem \u2014 underperformance, conflict, a hard call"
+    },
+    {
+      "id": "next-role",
+      "label": "Preparing for the next role or a career move"
+    },
+    {
+      "id": "company-sponsored",
+      "label": "My company wants to develop me (or I want to develop my leaders)"
+    },
+    {
+      "id": "ai-shift",
+      "label": "AI is changing how my teams work and I need to lead that shift"
+    },
+    {
+      "id": "not-in-their-league",
+      "label": "My boss is happy with me and I still don't have what the people above me have"
+    },
+    {
+      "id": "visibility-gap",
+      "label": "Good work, low visibility \u2014 outside my team few people know what I do"
+    }
+  ],
+  "visibility": [
+    {
+      "id": "yes-individual",
+      "label": "Yes \u2014 I want to build my personal brand alongside the mentoring (posts, testimonial, being named)"
+    },
+    {
+      "id": "yes-company",
+      "label": "Yes \u2014 announce it as a company: employer-brand story, our leaders grow publicly"
+    },
+    {
+      "id": "maybe-later",
+      "label": "Maybe later \u2014 ask me again when there are results to show"
+    },
+    {
+      "id": "private",
+      "label": "Keep it private \u2014 no public mention"
+    }
+  ],
+  "routing": {
+    "role_bands": [
+      {
+        "id": "senior-ic",
+        "label": "Senior/Staff/Principal engineer"
+      },
+      {
+        "id": "team-lead",
+        "label": "Team lead / first-time manager"
+      },
+      {
+        "id": "em",
+        "label": "Engineering manager"
+      },
+      {
+        "id": "director-vp",
+        "label": "Director / VP Engineering"
+      },
+      {
+        "id": "cto-founder",
+        "label": "CTO / founder"
+      },
+      {
+        "id": "product-leader",
+        "label": "Product leader (CPO, VP Product, PM lead)"
+      }
+    ],
+    "default_offer": "first-quarter",
+    "company_offer": "mentor-in-residence",
+    "company_offer_min_leaders": 3,
+    "match": {
+      "senior-ic": {
+        "default": [
+          "ic-to-manager",
+          "career-next-role"
+        ],
+        "just-promoted": [
+          "ic-to-manager",
+          "new-engineering-manager"
+        ],
+        "stuck-plateau": [
+          "career-next-role",
+          "exec-communication"
+        ],
+        "scale-jump": [
+          "scaling-org",
+          "exec-communication"
+        ],
+        "people-problem": [
+          "hiring-mis-hires",
+          "exec-communication"
+        ],
+        "next-role": [
+          "career-next-role",
+          "ic-to-manager"
+        ],
+        "company-sponsored": [
+          "ic-to-manager",
+          "career-next-role"
+        ],
+        "ai-shift": [
+          "ai-org-adoption",
+          "career-next-role"
+        ],
+        "not-in-their-league": [
+          "exec-communication",
+          "career-next-role"
+        ],
+        "visibility-gap": [
+          "visibility-personal-brand",
+          "negotiation-money-talk"
+        ]
+      },
+      "team-lead": {
+        "default": [
+          "new-engineering-manager",
+          "delivery-performance"
+        ],
+        "just-promoted": [
+          "new-engineering-manager",
+          "hiring-mis-hires"
+        ],
+        "stuck-plateau": [
+          "delivery-performance",
+          "new-engineering-manager"
+        ],
+        "scale-jump": [
+          "scaling-org",
+          "delivery-performance"
+        ],
+        "people-problem": [
+          "hiring-mis-hires",
+          "new-engineering-manager"
+        ],
+        "next-role": [
+          "career-next-role",
+          "new-engineering-manager"
+        ],
+        "company-sponsored": [
+          "new-engineering-manager",
+          "delivery-performance"
+        ],
+        "ai-shift": [
+          "ai-org-adoption",
+          "delivery-performance"
+        ],
+        "not-in-their-league": [
+          "exec-communication",
+          "new-engineering-manager"
+        ],
+        "visibility-gap": [
+          "visibility-personal-brand",
+          "exec-communication"
+        ]
+      },
+      "em": {
+        "default": [
+          "delivery-performance",
+          "exec-communication"
+        ],
+        "just-promoted": [
+          "new-engineering-manager",
+          "delivery-performance"
+        ],
+        "stuck-plateau": [
+          "delivery-performance",
+          "exec-communication"
+        ],
+        "scale-jump": [
+          "scaling-org",
+          "em-to-director"
+        ],
+        "people-problem": [
+          "hiring-mis-hires",
+          "delivery-performance"
+        ],
+        "next-role": [
+          "career-next-role",
+          "em-to-director"
+        ],
+        "company-sponsored": [
+          "delivery-performance",
+          "exec-communication"
+        ],
+        "ai-shift": [
+          "ai-org-adoption",
+          "delivery-performance"
+        ],
+        "not-in-their-league": [
+          "exec-communication",
+          "leading-the-function"
+        ],
+        "visibility-gap": [
+          "visibility-personal-brand",
+          "exec-communication"
+        ]
+      },
+      "director-vp": {
+        "default": [
+          "em-to-director",
+          "scaling-org"
+        ],
+        "just-promoted": [
+          "em-to-director",
+          "exec-communication"
+        ],
+        "stuck-plateau": [
+          "exec-communication",
+          "em-to-director"
+        ],
+        "scale-jump": [
+          "scaling-org",
+          "exec-communication"
+        ],
+        "people-problem": [
+          "hiring-mis-hires",
+          "em-to-director"
+        ],
+        "next-role": [
+          "career-next-role",
+          "exec-communication"
+        ],
+        "company-sponsored": [
+          "em-to-director",
+          "exec-communication"
+        ],
+        "ai-shift": [
+          "ai-org-adoption",
+          "scaling-org"
+        ],
+        "not-in-their-league": [
+          "leading-the-function",
+          "exec-communication"
+        ],
+        "visibility-gap": [
+          "visibility-personal-brand",
+          "leading-the-function"
+        ]
+      },
+      "cto-founder": {
+        "default": [
+          "founder-cto-sparring",
+          "scaling-org"
+        ],
+        "just-promoted": [
+          "founder-cto-sparring",
+          "exec-communication"
+        ],
+        "stuck-plateau": [
+          "founder-cto-sparring",
+          "scaling-org"
+        ],
+        "scale-jump": [
+          "scaling-org",
+          "founder-cto-sparring"
+        ],
+        "people-problem": [
+          "hiring-mis-hires",
+          "founder-cto-sparring"
+        ],
+        "next-role": [
+          "career-next-role",
+          "founder-cto-sparring"
+        ],
+        "company-sponsored": [
+          "founder-cto-sparring",
+          "em-to-director"
+        ],
+        "ai-shift": [
+          "ai-org-adoption",
+          "founder-cto-sparring"
+        ],
+        "not-in-their-league": [
+          "founder-cto-sparring",
+          "exec-communication"
+        ],
+        "visibility-gap": [
+          "visibility-personal-brand",
+          "founder-cto-sparring"
+        ]
+      },
+      "product-leader": {
+        "default": [
+          "exec-communication",
+          "delivery-performance"
+        ],
+        "just-promoted": [
+          "exec-communication",
+          "delivery-performance"
+        ],
+        "stuck-plateau": [
+          "exec-communication",
+          "delivery-performance"
+        ],
+        "scale-jump": [
+          "scaling-org",
+          "exec-communication"
+        ],
+        "people-problem": [
+          "hiring-mis-hires",
+          "exec-communication"
+        ],
+        "next-role": [
+          "career-next-role",
+          "exec-communication"
+        ],
+        "company-sponsored": [
+          "exec-communication",
+          "delivery-performance"
+        ],
+        "ai-shift": [
+          "ai-org-adoption",
+          "delivery-performance"
+        ],
+        "not-in-their-league": [
+          "exec-communication",
+          "leading-the-function"
+        ],
+        "visibility-gap": [
+          "visibility-personal-brand",
+          "exec-communication"
+        ]
+      }
+    }
+  }
+}
