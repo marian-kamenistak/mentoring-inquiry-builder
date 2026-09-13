@@ -60,6 +60,14 @@
 			"binding": "MCP_SESSIONS",
 			"id": "f459fd36614740fcbe313953349d7776",
 		},
+		{
+			// mc-web's SESSION namespace, shared on purpose (2026-09-07). mc-web's /meet route
+			// parks a booker's attribution here as `battr:<token>` before sending them to Reclaim;
+			// the booking webhook redeems it. Writing and reading the SAME namespace is what makes
+			// attribution work for the majority of bookers, who never return to the site.
+			"binding": "MC_ATTR",
+			"id": "5987ec7f91ed442988e84b37ab6d64e3",
+		},
 	],
 	// Cloudflare Workers rate limiting (open beta binding). Keyed by caller IP in code.
 	// OFFER: send_mentoring_offer only — the informational tools are the discovery surface and

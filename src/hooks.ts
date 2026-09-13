@@ -81,6 +81,14 @@ export type HookEnv = {
 	PREP_INVITE_SECRET?: string;
 	/** "true" → echo the raw booking payload to Slack. Diagnostic, see the echo block below. */
 	BOOKING_HOOK_ECHO?: string;
+	/**
+	 * mc-web's SESSION KV namespace (5987ec7f91ed442988e84b37ab6d64e3), bound here read/write so a
+	 * booking can redeem the `battr:<token>` attribution that mc-web's /meet route parked at click
+	 * time. Same physical namespace on purpose — the token is written by one Worker and read by
+	 * the other, and a second namespace would just be a second thing to keep in sync.
+	 * Unset → tokens are logged and ignored, never fatal.
+	 */
+	MC_ATTR?: KVNamespace;
 };
 
 const json = (data: unknown, status = 200): Response =>
@@ -317,6 +325,14 @@ export async function handleBookingHook(request: Request, env: HookEnv, url: URL
 		return typeof v === "string" && claimRe.test(v) ? v.match(claimRe)![0].toUpperCase() : null;
 	})();
 	const claimFromNote = claimFromData ?? raw.match(claimRe)?.[0]?.toUpperCase() ?? null;
+	// Click-time attribution token, minted by mc-web's /meet route and forwarded by Reclaim as
+	// `custom_data.data.attr`. Same shape as the claim above; validated hard because it becomes a
+	// KV key. There is no fallback by design — a booker who never returns to the site leaves no
+	// other trace to scan for.
+	const attrToken = (() => {
+		const v = body?.meeting?.custom_data?.data?.attr;
+		return typeof v === "string" && /^[0-9a-f]{16}$/.test(v) ? v : null;
+	})();
 	let email = (body.email ?? body?.meeting?.attendee?.attendee_email ?? "").trim().toLowerCase();
 	if (!email) {
 		const found = raw.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi) ?? [];
@@ -409,7 +425,55 @@ export async function handleBookingHook(request: Request, env: HookEnv, url: URL
 					const entriesData: any = entriesRes.ok ? await entriesRes.json().catch(() => ({ data: [] })) : { data: [] };
 					entryId = (entriesData.data ?? []).find((e: any) => e.list_api_slug === INQUIRIES_LIST_SLUG)?.entry_id;
 
-					const val = (k: string) => personValues?.[k]?.[0]?.value ?? "";
+					let val = (k: string) => personValues?.[k]?.[0]?.value ?? "";
+
+					// Redeem the click-time attribution token, if the booking URL carried one.
+					//
+					// This is the ONLY attribution path for a booker who never returns to
+					// marian.coach — and that is most of them (measured 2026-09-07: ~4
+					// `Booking attribution` cards against ~11 bookings, with no error log for the
+					// difference because /api/booking-attr was simply never called). mc-web's
+					// /meet route parks Attio-shaped values in KV and sends `?data-attr=<token>`;
+					// Reclaim forwards it here as custom_data.data.attr.
+					//
+					// First touch is write-once, exactly as in mc-web: an earlier, truer origin
+					// always outranks this one. Stamping happens BEFORE the GA4 call below so the
+					// conversion carries the real source rather than "direct".
+					//
+					// Reclaim's forwarding is UNVERIFIED on v2026-04-13, so every branch logs what
+					// it saw: the first real booking tells us whether the mechanism works at all.
+					if (attrToken) {
+						if (!env.MC_ATTR) {
+							console.error("booking-hook attr token present but MC_ATTR KV is not bound");
+						} else {
+							const parked = await env.MC_ATTR.get(`battr:${attrToken}`, "json").catch((e: unknown) => {
+								console.error("booking-hook attr token read failed", String(e));
+								return null;
+							});
+							if (!parked) {
+								console.log(`booking-hook attr token ${attrToken} not found (expired, already redeemed, or minted elsewhere)`);
+							} else {
+								const p = parked as { first?: Record<string, unknown>; refresh?: Record<string, unknown> };
+								const values = { ...(val("first_touch_at") ? {} : (p.first ?? {})), ...(p.refresh ?? {}) };
+								if (Object.keys(values).length) {
+									const ok = await attioWrite(`https://api.attio.com/v2/objects/people/records/${personId}`, {
+										method: "PATCH",
+										headers,
+										body: JSON.stringify({ data: { values } }),
+									}, "attr token stamp");
+									if (ok) {
+										// Reflect the write locally so val() — and the GA4 body below — see it.
+										personValues = { ...personValues, ...Object.fromEntries(Object.entries(values).map(([k, v]) => [k, [{ value: v }]])) };
+										val = (k: string) => personValues?.[k]?.[0]?.value ?? "";
+										console.log(`booking-hook attribution stamped from token ${attrToken}`);
+									}
+								}
+								// One-shot: a redeemed token must not re-stamp on a reschedule webhook.
+								await env.MC_ATTR.delete(`battr:${attrToken}`).catch(() => {});
+							}
+						}
+					}
+
 					// Funnel: Lead → Intro call. Only an actual transition counts — see shouldFireCallBooked.
 					const pipe = (entriesData.data ?? []).find((e: any) => e.list_api_slug === PIPELINE_LIST_SLUG);
 					let pipeEntry: any = pipe;

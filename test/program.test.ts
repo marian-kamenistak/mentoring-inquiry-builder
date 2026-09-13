@@ -4,15 +4,23 @@ import { buildProgram, type Program } from "../src/core/program";
 
 describe("program engine (deterministic-promise rule)", () => {
 	const fq = offerById("first-quarter")!;
+	/** Pinned clock. `buildProgram` refuses a start date in the past against the real `new Date()`,
+	 *  so hardcoding a start date without pinning `today` makes a test that passes until that date
+	 *  goes by and then fails forever — this file started failing on 2026-09-08 for exactly that
+	 *  reason. `test/persona-regressions.test.ts` already passes `today`; this file had not. */
+	const TODAY = "2026-09-01";
 
 	it("is deterministic", () => {
-		const a = buildProgram(fq, "2026-09-07") as Program;
-		const b = buildProgram(fq, "2026-09-07") as Program;
+		const a = buildProgram(fq, "2026-09-07", { today: TODAY }) as Program;
+		const b = buildProgram(fq, "2026-09-07", { today: TODAY }) as Program;
+		// Assert it built a real program first: two REJECTIONS also compare equal, which is how
+		// this test kept passing for three days while the two below were failing.
+		expect(a.sessions).toBeDefined();
 		expect(a).toEqual(b);
 	});
 
 	it("places 6 bi-weekly sessions with checkpoint and closing review", () => {
-		const p = buildProgram(fq, "2026-09-07") as Program; // a Monday
+		const p = buildProgram(fq, "2026-09-07", { today: TODAY }) as Program; // a Monday
 		expect(p.sessions).toHaveLength(6);
 		expect(p.sessions[2].kind).toBe("checkpoint"); // checkpoint_after_session: 3
 		expect(p.sessions[5].kind).toBe("closing-review");
@@ -29,7 +37,7 @@ describe("program engine (deterministic-promise rule)", () => {
 	});
 
 	it("never lands a session on a weekend", () => {
-		const p = buildProgram(fq, "2026-09-05") as Program; // a Saturday start
+		const p = buildProgram(fq, "2026-09-05", { today: TODAY }) as Program; // a Saturday start
 		for (const s of p.sessions) {
 			const day = new Date(`${s.date}T00:00:00Z`).getUTCDay();
 			expect(day).not.toBe(0);

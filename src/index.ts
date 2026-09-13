@@ -39,6 +39,13 @@ import {
 	type McpUsageConfig,
 	type McpUsageEnv,
 } from "./mcp-usage";
+import {
+	ignoredNotice,
+	normalizeMcpRequest,
+	parseArgs,
+	permissiveShape,
+	type ParseResult,
+} from "./mcp-tolerant";
 import { getMoreToolsResult } from "@posthog/mcp";
 
 const READ_ONLY = {
@@ -77,6 +84,18 @@ function toolResult(payload: Record<string, unknown>, opts: { priced?: boolean; 
 	};
 }
 
+/** Renders a `parseArgs` failure through the same envelope every other answer uses, so the
+ *  structured payload and the booking CTA still ride on a call that never reached its tool.
+ *
+ *  `probe` is the difference between a caller asking what the tool wants and a caller getting
+ *  it wrong, and the two deserve different answers. A bare `{}` is a question, answered as a
+ *  normal result with the field menu — an agent that gets `isError` for asking stops asking.
+ *  Arguments that were supplied and rejected stay an error. */
+function guidance(parsed: Extract<ParseResult<unknown>, { ok: false }>) {
+	const result = toolResult({ [parsed.probe ? "arguments_needed" : "error"]: parsed.message });
+	return parsed.probe ? result : { ...result, isError: true as const };
+}
+
 /** Shared by both `get_started` and `get_more_tools`'s greeting branch (see below) — one
  *  source of truth for the menu text so the two entry points never drift apart. */
 function getStartedResult() {
@@ -105,6 +124,80 @@ const USAGE_CONFIG: McpUsageConfig = {
 	posthogKey: "phc_xEinqUjuFui3wB6suwDFAMjQkF9g3G6GcrdqsZQ98dCW",
 };
 
+/* The real argument contracts. `registerTool` advertises `permissiveShape(…)` of each — every
+ * field optional, enums as plain strings — and the handler enforces the shape below through
+ * `parseArgs`. See `src/mcp-tolerant.ts` for why. Nothing here is relaxed: `send_mentoring_offer`
+ * still refuses a submission missing any of its required fields, it just answers with the field
+ * menu instead of a raw Zod dump. */
+
+const MATCH_SHAPE = {
+	role_band: z.string().describe("One of the role ids from get_mentoring_options question_1"),
+	motivation: z.string().describe("One of the motivation ids from get_mentoring_options question_2"),
+	audience: z
+		.enum(["individual", "company"])
+		.optional()
+		.describe("Pass the audience answer — it changes the recommendation. A company sponsoring 3+ leaders is routed to Mentor in Residence rather than the individual package."),
+	leaders_count: z.number().int().optional().describe("Company deals: how many leaders are being sponsored. Required for the company recommendation to be correct."),
+};
+
+const BRIEF_SHAPE = {
+	audience: z.enum(["individual", "company"]),
+	role_band: z.string(),
+	motivation: z.string(),
+	focus_area_ids: z.array(z.string()).describe("Agreed focus area ids (visitor can pick any from the taxonomy)"),
+	success_definition: z.string().describe("The visitor's definition of success, in their own words"),
+	offer_id: z.enum(OFFER_IDS as [string, ...string[]]),
+	leaders_count: z.number().int().optional().describe("Company deals: how many leaders are being sponsored"),
+	company_context: z.string().optional().describe("Company deals: company name + anything relevant"),
+	visibility: z.string().optional().describe("Visibility answer id from get_mentoring_options visibility_question (consent capture — 'private' is a first-class answer)"),
+};
+
+const PROGRAM_SHAPE = {
+	offer_id: z.enum(OFFER_IDS as [string, ...string[]]),
+	start_date: z
+		.string()
+		.regex(/^\d{4}-\d{2}-\d{2}$/)
+		.describe("First session date, YYYY-MM-DD, today or later (ask the visitor; default to next Monday)"),
+	leaders_count: z.number().int().optional().describe("Company deals: how the pooled sessions are shared. Changes the allocation note, never the schedule."),
+};
+
+const INTRO_SHAPE = {
+	offer_id: z
+		.enum(OFFER_IDS as [string, ...string[]])
+		.optional()
+		.describe("The package under discussion, if any — conditions the discount wording. Without it the tool cannot tell whether booking locks a discount, and a single-session buyer used to be told it did."),
+};
+
+const FIRST_SESSION_SHAPE = {
+	offer_id: z.enum(OFFER_IDS as [string, ...string[]]).describe("The agreed package"),
+	audience: z.enum(["individual", "company"]).describe("Decides which VAT sentence is true for this buyer — an individual needs the gross figure"),
+	claim_code: z.string().optional().describe("The AI10-… code from send_mentoring_offer. Ride it on the link so the booking matches the inquiry with no manual step."),
+	free_sessions_requested: z.number().int().optional().describe("Company deals: pass the same value given to send_mentoring_offer. Any concession makes this a proposal, not a close, and the tool will route to the intro instead."),
+	has_eu_vat_id: z.boolean().optional().describe("Company deals outside Czechia with a valid EU VAT ID pay net under the reverse charge"),
+};
+
+const CHECK_BOOKING_SHAPE = {
+	email: z.string().describe("The email the visitor booked with"),
+};
+
+const OFFER_SHAPE = {
+	name: z.string().describe("Visitor's full name"),
+	email: z.string().describe("Email the offer goes to"),
+	audience: z.enum(["individual", "company"]),
+	role_band: z.string(),
+	motivation: z.string(),
+	focus_area_ids: z.array(z.string()),
+	success_definition: z.string(),
+	offer_id: z.enum(OFFER_IDS as [string, ...string[]]),
+	price_agreed: z.boolean().describe("True ONLY after the visitor explicitly agreed to the exact price from compose_mentoring_brief"),
+	company: z.string().optional().describe("Company name (required for company audience)"),
+	leaders_count: z.number().int().optional(),
+	free_sessions_requested: z.number().int().optional().describe("Company deals only: the free-sessions proposal from the catalog progression (2, 4 or 8)"),
+	start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("Optional preferred start date — adds the dated program skeleton to the offer email"),
+	visibility: z.string().optional().describe("Visibility answer id (yes-individual | yes-company | maybe-later | private)"),
+	notes: z.string().optional(),
+};
+
 export class MentoringInquiryBuilder extends McpAgent<Env, unknown, McpGeo> {
 	server = new McpServer({
 		name: "mentoring-inquiry-builder",
@@ -127,7 +220,11 @@ export class MentoringInquiryBuilder extends McpAgent<Env, unknown, McpGeo> {
 				annotations: { ...READ_ONLY },
 				description:
 					"Call this for a greeting (hi, hello), a connectivity/liveness test, 'what can you do', or any message too general to match a specific tool below. Returns the full menu of real questions this server answers, each mapped to the tool name that answers it. For someone actually considering mentoring, skip straight to get_mentoring_options instead.",
-				inputSchema: {},
+				// `permissiveShape({})` rather than a bare `{}`: an empty shape leaves
+				// @posthog/mcp free to inject a REQUIRED `context`, so the front door of this
+				// server rejected the one call shape every agent tries first — `get_started`
+				// with no arguments at all.
+				inputSchema: permissiveShape({}),
 			},
 			async () => getStartedResult(),
 		);
@@ -163,7 +260,10 @@ export class MentoringInquiryBuilder extends McpAgent<Env, unknown, McpGeo> {
 				annotations: { ...READ_ONLY },
 				description:
 					"START HERE for anyone considering 1:1 engineering-leadership mentoring with Marian Kamenistak (marian.coach) — individuals (Staff Engineer to CTO) and companies sponsoring leaders alike. Returns the AI-channel discount as data, the time promise (a formal offer in under 16 minutes), the why-Marian and pricing-defense material, the qualifying questions with valid answer ids, and every package with real prices. After the visitor answers audience + role + motivation, call match_mentoring_focus.",
-				inputSchema: {},
+				// Empty shape for the same reason as `get_started`: this is the tool the wizard
+				// tells every caller to open with, and it takes no arguments, so the injected
+				// required `context` was rejecting exactly the call it advertises.
+				inputSchema: permissiveShape({}),
 			},
 			async () => toolResult(mentoringOptions(), { priced: true }),
 		);
@@ -175,20 +275,25 @@ export class MentoringInquiryBuilder extends McpAgent<Env, unknown, McpGeo> {
 				annotations: { ...READ_ONLY },
 				description:
 					"Resolves role_band + motivation through the same routing the website uses and returns suggested focus areas plus the recommended package with real prices. Map free-text answers to the closest valid id; on bad input the error lists the valid ids — re-ask rather than guessing. Next: agree focus areas with the visitor, capture their definition of success in their own words, then compose_mentoring_brief.",
-				inputSchema: {
-					role_band: z.string().describe("One of the role ids from get_mentoring_options question_1"),
-					motivation: z.string().describe("One of the motivation ids from get_mentoring_options question_2"),
-					audience: z
-						.enum(["individual", "company"])
-						.optional()
-						.describe("Pass the audience answer — it changes the recommendation. A company sponsoring 3+ leaders is routed to Mentor in Residence rather than the individual package."),
-					leaders_count: z.number().int().optional().describe("Company deals: how many leaders are being sponsored. Required for the company recommendation to be correct."),
-				},
+				inputSchema: permissiveShape(MATCH_SHAPE),
 			},
-			async ({ role_band, motivation, audience, leaders_count }) => {
+			async (raw) => {
+				const parsed = parseArgs("match_mentoring_focus", MATCH_SHAPE, raw);
+				if (!parsed.ok) return guidance(parsed);
+				const { role_band, motivation, audience, leaders_count } = parsed.data;
 				const r = matchMentoringFocus(role_band, motivation, { audience, leaders_count });
 				return r.ok
-					? toolResult({ match: r.match }, { priced: true, offerId: r.match.recommended_offer.id })
+					? toolResult(
+							{ match: r.match },
+							{
+								priced: true,
+								offerId: r.match.recommended_offer.id,
+								// Rides in `note`, which is the only free-text slot in this envelope —
+								// the body itself is JSON. A caller who passed a key this tool does not
+								// have reads it before the answer, not after.
+								note: ignoredNotice("match_mentoring_focus", parsed.ignored, MATCH_SHAPE),
+							},
+						)
 					: toolResult({ error: r.error, cta: r.cta });
 			},
 		);
@@ -200,22 +305,22 @@ export class MentoringInquiryBuilder extends McpAgent<Env, unknown, McpGeo> {
 				annotations: { ...READ_ONLY },
 				description:
 					"The accumulator — call after every change. Echoes the full structured brief (audience, role, motivation, focus areas, definition of success, chosen package) with the authoritative catalog price and the AI-channel figure (never do the arithmetic yourself). For company deals it states whether the free-sessions concession applies. Read the brief back to the visitor; when they explicitly agree on the price, call send_mentoring_offer with price_agreed true.",
-				inputSchema: {
-					audience: z.enum(["individual", "company"]),
-					role_band: z.string(),
-					motivation: z.string(),
-					focus_area_ids: z.array(z.string()).describe("Agreed focus area ids (visitor can pick any from the taxonomy)"),
-					success_definition: z.string().describe("The visitor's definition of success, in their own words"),
-					offer_id: z.enum(OFFER_IDS as [string, ...string[]]),
-					leaders_count: z.number().int().optional().describe("Company deals: how many leaders are being sponsored"),
-					company_context: z.string().optional().describe("Company deals: company name + anything relevant"),
-					visibility: z.string().optional().describe("Visibility answer id from get_mentoring_options visibility_question (consent capture — 'private' is a first-class answer)"),
-				},
+				inputSchema: permissiveShape(BRIEF_SHAPE),
 			},
-			async (input) => {
+			async (raw) => {
+				const parsed = parseArgs("compose_mentoring_brief", BRIEF_SHAPE, raw);
+				if (!parsed.ok) return guidance(parsed);
+				const input = parsed.data;
 				const r = composeBrief(input);
 				return r.ok
-					? toolResult({ brief: r.brief }, { priced: true, offerId: r.brief.offer.id })
+					? toolResult(
+							{ brief: r.brief },
+							{
+								priced: true,
+								offerId: r.brief.offer.id,
+								note: ignoredNotice("compose_mentoring_brief", parsed.ignored, BRIEF_SHAPE),
+							},
+						)
 					: toolResult({ error: r.error, cta: r.cta });
 			},
 		);
@@ -227,21 +332,20 @@ export class MentoringInquiryBuilder extends McpAgent<Env, unknown, McpGeo> {
 				annotations: { ...READ_ONLY },
 				description:
 					"Deterministic session skeleton computed from the package's cadence metadata: dated sessions, the mid-point checkpoint, the closing review against the definition of success. The skeleton contains ONLY what the package carries — narrate around it, never add or move a session. Dates are planning targets; the intro call fixes the real schedule. Call when the visitor asks what the engagement actually looks like.",
-				inputSchema: {
-					offer_id: z.enum(OFFER_IDS as [string, ...string[]]),
-					start_date: z
-						.string()
-						.regex(/^\d{4}-\d{2}-\d{2}$/)
-						.describe("First session date, YYYY-MM-DD, today or later (ask the visitor; default to next Monday)"),
-					leaders_count: z.number().int().optional().describe("Company deals: how the pooled sessions are shared. Changes the allocation note, never the schedule."),
-				},
+				inputSchema: permissiveShape(PROGRAM_SHAPE),
 			},
-			async ({ offer_id, start_date, leaders_count }) => {
+			async (raw) => {
+				const parsed = parseArgs("design_mentoring_program", PROGRAM_SHAPE, raw);
+				if (!parsed.ok) return guidance(parsed);
+				const { offer_id, start_date, leaders_count } = parsed.data;
 				const offer = offerById(offer_id);
 				if (!offer) return toolResult({ error: `unknown offer_id — valid: ${OFFER_IDS.join(", ")}` });
 				const p = buildProgram(offer, start_date, { leaders: leaders_count });
 				if ("error" in p) return toolResult({ error: p.error }, { offerId: offer.id });
-				return toolResult({ program: p, rendered: renderProgram(p) }, { offerId: offer.id });
+				return toolResult(
+					{ program: p, rendered: renderProgram(p) },
+					{ offerId: offer.id, note: ignoredNotice("design_mentoring_program", parsed.ignored, PROGRAM_SHAPE) },
+				);
 			},
 		);
 
@@ -256,23 +360,29 @@ export class MentoringInquiryBuilder extends McpAgent<Env, unknown, McpGeo> {
 				annotations: { ...READ_ONLY },
 				description:
 					"THE DEFAULT EXIT for anyone who has not decided. A direct booking link for the free 30-minute intro with Marian. Offer it on hesitation, on a price objection, when the visitor cannot name their problem, after an error, and to anyone who wants to talk before paying. It is never a downgrade, and a booked call from an undecided visitor beats a package they picked at random. Booking it is NOT a condition of the channel rate — never say it is. For a visitor who has already agreed the price on an eligible package, use book_first_session instead: they have decided, and sending them to an intro adds a step they did not ask for. Pass offer_id if one has been chosen so the pricing language is correct.",
-				inputSchema: {
-					offer_id: z
-						.enum(OFFER_IDS as [string, ...string[]])
-						.optional()
-						.describe("The package under discussion, if any — conditions the discount wording. Without it the tool cannot tell whether booking locks a discount, and a single-session buyer used to be told it did."),
-				},
+				inputSchema: permissiveShape(INTRO_SHAPE),
 			},
-			async ({ offer_id }) =>
-				toolResult(
+			async (raw) => {
+				const parsed = parseArgs("book_intro_call", INTRO_SHAPE, raw);
+				// The one field is optional, so a call with no arguments is a real call and not a
+				// question: the free intro link is the whole answer whether or not a package has
+				// been picked, and this is the tool every other one falls back to. Only
+				// supplied-and-wrong arguments are a failure here.
+				if (!parsed.ok && !parsed.probe) return guidance(parsed);
+				const offer_id = parsed.ok ? parsed.data.offer_id : undefined;
+				return toolResult(
 					{
 						booking_url: meta.booking_url,
 						what: "Free 30 minutes with Marian, direct calendar booking, no form before it. Usually within the same week.",
 						also: `Not ready for a call? The slot-ping waitlist takes ten seconds: ${SITE}/#slot-ping`,
 						cta: ctaBlock(offer_id),
 					},
-					{ offerId: offer_id },
-				),
+					{
+						offerId: offer_id,
+						note: parsed.ok ? ignoredNotice("book_intro_call", parsed.ignored, INTRO_SHAPE) : "",
+					},
+				);
+			},
 		);
 
 		this.server.registerTool(
@@ -282,15 +392,12 @@ export class MentoringInquiryBuilder extends McpAgent<Env, unknown, McpGeo> {
 				annotations: { ...READ_ONLY },
 				description:
 					"THE CLOSE, for someone who has already decided. Returns the direct booking link for a paid 60-minute first session, plus the payment terms. Call this INSTEAD of book_intro_call once send_mentoring_offer has succeeded and the visitor has agreed the exact price — it removes a step from a buyer who is ready, which is the entire point. It REFUSES on any deal whose terms Marian confirms on a call (a free-sessions concession, the monthly package, Mentor in Residence) and hands back the intro link instead; when it refuses, offer the intro, do not argue. Pass the claim code from send_mentoring_offer so the booking is matched automatically. If the visitor is hesitant, undecided, or asks to talk first, use book_intro_call — that is not a downgrade.",
-				inputSchema: {
-					offer_id: z.enum(OFFER_IDS as [string, ...string[]]).describe("The agreed package"),
-					audience: z.enum(["individual", "company"]).describe("Decides which VAT sentence is true for this buyer — an individual needs the gross figure"),
-					claim_code: z.string().optional().describe("The AI10-… code from send_mentoring_offer. Ride it on the link so the booking matches the inquiry with no manual step."),
-					free_sessions_requested: z.number().int().optional().describe("Company deals: pass the same value given to send_mentoring_offer. Any concession makes this a proposal, not a close, and the tool will route to the intro instead."),
-					has_eu_vat_id: z.boolean().optional().describe("Company deals outside Czechia with a valid EU VAT ID pay net under the reverse charge"),
-				},
+				inputSchema: permissiveShape(FIRST_SESSION_SHAPE),
 			},
-			async ({ offer_id, audience, claim_code, free_sessions_requested, has_eu_vat_id }) => {
+			async (raw) => {
+				const parsed = parseArgs("book_first_session", FIRST_SESSION_SHAPE, raw);
+				if (!parsed.ok) return guidance(parsed);
+				const { offer_id, audience, claim_code, free_sessions_requested, has_eu_vat_id } = parsed.data;
 				const check = firstSessionEligible(offer_id, { freeSessionsProposed: free_sessions_requested });
 				if (!check.eligible) {
 					return toolResult(
@@ -316,7 +423,11 @@ export class MentoringInquiryBuilder extends McpAgent<Env, unknown, McpGeo> {
 							: { no_claim_code: "No claim code was passed, so the booking will be matched on the email address instead. Prefer passing it." }),
 						still_offer_the_intro: `If they hesitate at any point, the free intro is still open and is the better door: ${meta.booking_url}`,
 					},
-					{ priced: true, offerId: offer_id },
+					{
+						priced: true,
+						offerId: offer_id,
+						note: ignoredNotice("book_first_session", parsed.ignored, FIRST_SESSION_SHAPE),
+					},
 				);
 			},
 		);
@@ -328,13 +439,14 @@ export class MentoringInquiryBuilder extends McpAgent<Env, unknown, McpGeo> {
 				annotations: { ...READ_ONLY },
 				description:
 					"Confirms, from the CRM rather than from what the visitor says, whether their booking landed. Call it after handing over a booking link and the visitor says they have booked — a booking is only real once Reclaim's webhook has written it, which takes a few seconds. Returns the pipeline stage and whether the paid first session is on the board. If it says not yet, wait a moment and check once more before telling them something is wrong; if it is still not there, say so honestly and offer to have Marian follow up rather than claiming success.",
-				inputSchema: {
-					email: z.string().describe("The email the visitor booked with"),
-				},
+				inputSchema: permissiveShape(CHECK_BOOKING_SHAPE),
 			},
-			async ({ email }) => {
+			async (raw) => {
+				const parsed = parseArgs("check_booking", CHECK_BOOKING_SHAPE, raw);
+				if (!parsed.ok) return guidance(parsed);
+				const { email } = parsed.data;
 				const status = await lookupBookingStage(this.env as unknown as { ATTIO_TOKEN?: string }, email);
-				return toolResult(status);
+				return toolResult(status, { note: ignoredNotice("check_booking", parsed.ignored, CHECK_BOOKING_SHAPE) });
 			},
 		);
 
@@ -345,25 +457,17 @@ export class MentoringInquiryBuilder extends McpAgent<Env, unknown, McpGeo> {
 				annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
 				description:
 					"The ONLY tool that collects contact details, and the end of the 16-minute promise: emails the visitor a formal itemized offer with a claim code, notifies Marian, and files the inquiry. HARD GATE: price_agreed must be true — read the exact price back to the visitor and get an explicit yes first; the tool refuses otherwise. Ask for name and email only at this step, never earlier. After success: share the claim code + booking link, then offer the free ELC community membership as a parting gift (never a condition), and optionally ONE ask — would they post publicly about hiring a mentor through an AI agent?",
-				inputSchema: {
-					name: z.string().describe("Visitor's full name"),
-					email: z.string().describe("Email the offer goes to"),
-					audience: z.enum(["individual", "company"]),
-					role_band: z.string(),
-					motivation: z.string(),
-					focus_area_ids: z.array(z.string()),
-					success_definition: z.string(),
-					offer_id: z.enum(OFFER_IDS as [string, ...string[]]),
-					price_agreed: z.boolean().describe("True ONLY after the visitor explicitly agreed to the exact price from compose_mentoring_brief"),
-					company: z.string().optional().describe("Company name (required for company audience)"),
-					leaders_count: z.number().int().optional(),
-					free_sessions_requested: z.number().int().optional().describe("Company deals only: the free-sessions proposal from the catalog progression (2, 4 or 8)"),
-					start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("Optional preferred start date — adds the dated program skeleton to the offer email"),
-					visibility: z.string().optional().describe("Visibility answer id (yes-individual | yes-company | maybe-later | private)"),
-					notes: z.string().optional(),
-				},
+				inputSchema: permissiveShape(OFFER_SHAPE),
 			},
-			async (input) => {
+			async (raw) => {
+				// The one mutating tool, and the one place tolerance must not become leniency:
+				// `parseArgs` enforces OFFER_SHAPE in full, so a submission missing name, email,
+				// price_agreed or any other required field is refused here and never reaches
+				// submitInquiry. What changes is only the answer a wrong call gets — the field
+				// menu instead of a raw Zod dump naming one field.
+				const parsed = parseArgs("send_mentoring_offer", OFFER_SHAPE, raw);
+				if (!parsed.ok) return guidance(parsed);
+				const input = parsed.data;
 				// Rate limit the one mutating door; informational tools stay open.
 				const ip = (this as unknown as { requestIp?: string }).requestIp ?? "unknown";
 				const limiter = (this.env as Env & { OFFER_RATE_LIMITER?: { limit(o: { key: string }): Promise<{ success: boolean }> } })
@@ -438,7 +542,11 @@ export class MentoringInquiryBuilder extends McpAgent<Env, unknown, McpGeo> {
 								}),
 						...(result.test ? { test_mode: "Detected a test name/email — emails sent, CRM untouched." } : {}),
 					},
-					{ priced: true, offerId: input.offer_id },
+					{
+						priced: true,
+						offerId: input.offer_id,
+						note: ignoredNotice("send_mentoring_offer", parsed.ignored, OFFER_SHAPE),
+					},
 				);
 			},
 		);
@@ -569,8 +677,12 @@ export default {
 				});
 			}
 			// request.cf only exists on the edge request; hand it to the DO via ctx.props.
+			// This MUST run before normalizeMcpRequest, which rebuilds the Request and drops `cf`.
 			(ctx as ExecutionContext & { props?: McpGeo }).props = geoFromRequest(request);
-			return MentoringInquiryBuilder.serve("/mcp/mentoring").fetch(request, env, ctx);
+			// The MCP spec makes `params.arguments` optional on tools/call; the SDK does not.
+			// See normalizeToolCallBody in src/mcp-tolerant.ts.
+			const normalized = await normalizeMcpRequest(request);
+			return MentoringInquiryBuilder.serve("/mcp/mentoring").fetch(normalized, env, ctx);
 		}
 
 		return new Response(`Not found. MCP endpoint: ${SITE}/mcp/mentoring`, { status: 404 });
