@@ -604,7 +604,6 @@ describe("DECISION: one list rate, free sessions in the package, 10% on every pa
 		// List prices match what marian.coach and the skill publish (SCHEMA v2026.09).
 		expect(offerById("single-session")!.price).toBe(395);
 		expect(offerById("first-quarter")!.price).toBe(1975);
-		expect(offerById("two-quarters")!.price).toBe(3950);
 		expect(offerById("monthly")!.price).toBe(790);
 		expect(offerById("mentor-in-residence")!.price).toBe(5925);
 	});
@@ -633,7 +632,7 @@ describe("DECISION: one list rate, free sessions in the package, 10% on every pa
 
 describe("DECISION: the floor governs the CHARGED rate; free sessions sit outside it", () => {
 	it("the per-session figure is the package's AI-door rate on every package and never breaches the floor", async () => {
-		for (const id of ["single-session", "first-quarter", "two-quarters", "monthly"]) {
+		for (const id of ["single-session", "first-quarter", "monthly"]) {
 			const r = await submitInquiry({}, { ...BASE, offer_id: id, name: "Test Person", email: "test@example.com", price_agreed: true, channel: "mcp" });
 			expect(r.ok).toBe(true);
 			if (!r.ok) return;

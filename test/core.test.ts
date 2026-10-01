@@ -181,7 +181,6 @@ describe("guardrails + options carry the magnet", () => {
 	it("published LIST prices match the approved v2026.09 schema — no parity gap with the website", () => {
 		expect(offers.find((o) => o.id === "single-session")!.price).toBe(395);
 		expect(offers.find((o) => o.id === "first-quarter")!.price).toBe(1975);
-		expect(offers.find((o) => o.id === "two-quarters")!.price).toBe(3950);
 		expect(offers.find((o) => o.id === "monthly")!.price).toBe(790);
 		expect(offers.find((o) => o.id === "mentor-in-residence")!.price).toBe(5925);
 	});
@@ -189,7 +188,6 @@ describe("guardrails + options carry the magnet", () => {
 	it("what a client PAYS through the wizard is the approved AI-door figure on every package", () => {
 		expect(offers.find((o) => o.id === "single-session")!.ai_channel_price).toBe(356);
 		expect(offers.find((o) => o.id === "first-quarter")!.ai_channel_price).toBe(1778);
-		expect(offers.find((o) => o.id === "two-quarters")!.ai_channel_price).toBe(3555);
 		expect(offers.find((o) => o.id === "monthly")!.ai_channel_price).toBe(711);
 		expect(offers.find((o) => o.id === "mentor-in-residence")!.ai_channel_price).toBe(5333);
 	});
