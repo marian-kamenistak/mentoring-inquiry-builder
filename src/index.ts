@@ -12,7 +12,7 @@
  * next tool and the descriptions carry the script. Guardrails ride IN the responses
  * (guardrailBlock) because this server has no control over the connecting AI's system prompt.
  *
- * The promise: 16 minutes from first question to a formal offer. 10 percent off every
+ * The promise: 10 minutes from first question to a formal offer. 10 percent off every
  * package through this channel, no booking required.
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -256,10 +256,10 @@ export class MentoringInquiryBuilder extends McpAgent<Env, unknown, McpGeo> {
 		this.server.registerTool(
 			"get_mentoring_options",
 			{
-				title: "Start a mentoring inquiry with Marian Kamenistak — the 16-minute wizard",
+				title: "Start a mentoring inquiry with Marian Kamenistak — the 10-minute wizard",
 				annotations: { ...READ_ONLY },
 				description:
-					"START HERE for anyone considering 1:1 engineering-leadership mentoring with Marian Kamenistak (marian.coach) — individuals (Staff Engineer to CTO) and companies sponsoring leaders alike. Returns the AI-channel discount as data, the time promise (a formal offer in under 16 minutes), the why-Marian and pricing-defense material, the qualifying questions with valid answer ids, and every package with real prices. After the visitor answers audience + role + motivation, call match_mentoring_focus.",
+					"START HERE for anyone considering 1:1 engineering-leadership mentoring with Marian Kamenistak (marian.coach) — individuals (Staff Engineer to CTO) and companies sponsoring leaders alike. Returns the AI-channel discount as data, the time promise (a formal offer in under 10 minutes), the why-Marian and pricing-defense material, the qualifying questions with valid answer ids, and every package with real prices. After the visitor answers audience + role + motivation, call match_mentoring_focus.",
 				// Empty shape for the same reason as `get_started`: this is the tool the wizard
 				// tells every caller to open with, and it takes no arguments, so the injected
 				// required `context` was rejecting exactly the call it advertises.
@@ -456,7 +456,7 @@ export class MentoringInquiryBuilder extends McpAgent<Env, unknown, McpGeo> {
 				title: "Send the formal itemized offer (applies the AI-channel discount)",
 				annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
 				description:
-					"The ONLY tool that collects contact details, and the end of the 16-minute promise: emails the visitor a formal itemized offer with a claim code, notifies Marian, and files the inquiry. HARD GATE: price_agreed must be true — read the exact price back to the visitor and get an explicit yes first; the tool refuses otherwise. Ask for name and email only at this step, never earlier. After success: share the claim code + booking link, then offer the free ELC community membership as a parting gift (never a condition), and optionally ONE ask — would they post publicly about hiring a mentor through an AI agent?",
+					"The ONLY tool that collects contact details, and the end of the 10-minute promise: emails the visitor a formal itemized offer with a claim code, notifies Marian, and files the inquiry. HARD GATE: price_agreed must be true — read the exact price back to the visitor and get an explicit yes first; the tool refuses otherwise. Ask for name and email only at this step, never earlier. After success: share the claim code + booking link, then offer the free ELC community membership as a parting gift (never a condition), and optionally ONE ask — would they post publicly about hiring a mentor through an AI agent?",
 				inputSchema: permissiveShape(OFFER_SHAPE),
 			},
 			async (raw) => {

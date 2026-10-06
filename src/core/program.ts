@@ -71,7 +71,9 @@ export function buildProgram(offer: Offer, startDate: string, opts: { today?: st
 				? `Session ${i + 1} of ${count} — closing review: score progress against your definition of success`
 				: isCheckpoint
 					? `Session ${i + 1} of ${count} — mid-point checkpoint: are we working on the right things?`
-					: `Session ${i + 1} of ${count}`,
+					: perMonth
+						? `Session ${i + 1}` // recurring: no "of N", the engagement has no end date
+						: `Session ${i + 1} of ${count}`,
 		});
 	}
 	const leaders = Math.max(1, opts.leaders ?? 1);
@@ -80,7 +82,14 @@ export function buildProgram(offer: Offer, startDate: string, opts: { today?: st
 		startDate,
 		sessions,
 		asyncAccess: p.async_access === true,
-		...(perMonth ? { continues: `This is the ${months}-month minimum commitment (${offer.sessions} sessions a month). The engagement continues monthly after that until cancelled — this skeleton is not the end of it.` } : {}),
+		...(perMonth
+			? {
+					continues:
+						months > 1
+							? `This is the ${months}-month minimum commitment (${offer.sessions} sessions a month). The engagement continues monthly after that until cancelled — this skeleton is not the end of it.`
+							: `One month shown (${offer.sessions} sessions). It continues monthly until you cancel, and you can cancel any month — this skeleton is not the end of it.`,
+				}
+			: {}),
 		// A pooled company SKU is not a per-leader calendar. Say so rather than letting an
 		// 18-row list read as one leader's schedule, or as 18 sessions each.
 		...(leaders > 1 && offer.per_leader !== true

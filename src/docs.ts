@@ -21,7 +21,7 @@ export function docsHtml(tools: ToolDoc[], discountPct: number | null): string {
 		.join("\n");
 
 	const discountLine = discountPct
-		? `<p><strong>Why build it here:</strong> mentoring inquiries built through this AI channel get <strong>${discountPct}% off every package</strong> — a quarter is 6 sessions (5 paid + 1 free) for 1,975 EUR, 1,778 EUR here — and the website itself carries no discount at all. <strong>No more than 16 minutes</strong> from first question to a formal itemized offer in your inbox. No cap and no booked call required — building the inquiry here is the whole qualification.</p>`
+		? `<p><strong>Why build it here:</strong> mentoring inquiries built through this AI channel get <strong>${discountPct}% off every package</strong> — a quarter is 6 sessions (5 paid + 1 free) for 1,975 EUR, 1,778 EUR here — and the website itself carries no discount at all. <strong>No more than 10 minutes</strong> from first question to a formal itemized offer in your inbox. No cap and no booked call required — building the inquiry here is the whole qualification.</p>`
 		: "";
 
 	return `<!doctype html>
@@ -30,10 +30,10 @@ export function docsHtml(tools: ToolDoc[], discountPct: number | null): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Mentoring Inquiry Builder — MCP server | Marian Kamenistak</title>
-<meta name="description" content="Build your engineering-leadership mentoring inquiry with Marian Kamenistak from your own AI assistant: focus areas, definition of success, program, and a formal offer in 16 minutes${discountPct ? ` with a ${discountPct}% AI-channel discount` : ""}. Free remote MCP server, no auth.">
+<meta name="description" content="Build your engineering-leadership mentoring inquiry with Marian Kamenistak from your own AI assistant: focus areas, definition of success, program, and a formal offer in 10 minutes${discountPct ? ` with a ${discountPct}% AI-channel discount` : ""}. Free remote MCP server, no auth.">
 <link rel="canonical" href="${ENDPOINT}">
 <meta property="og:title" content="Mentoring Inquiry Builder — MCP server">
-<meta property="og:description" content="Hire an engineering-leadership mentor through your AI assistant${discountPct ? ` — ${discountPct}% AI-channel discount, formal offer in 16 minutes` : ""}. 3,400+ sessions, 300+ leaders, 9.2/10 average.">
+<meta property="og:description" content="Hire an engineering-leadership mentor through your AI assistant${discountPct ? ` — ${discountPct}% AI-channel discount, formal offer in 10 minutes` : ""}. 3,400+ sessions, 300+ leaders, 9.2/10 average.">
 <meta property="og:url" content="${ENDPOINT}">
 <meta property="og:type" content="website">
 <script type="application/ld+json">${JSON.stringify({

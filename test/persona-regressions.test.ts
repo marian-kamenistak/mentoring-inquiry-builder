@@ -93,7 +93,7 @@ describe("unit integrity: recurring SKUs must not read as one-off totals (Sofia,
 		expect(b.ok).toBe(true);
 		if (!b.ok) return;
 		expect(b.brief.offer.list_price_display).toContain("/ month");
-		expect(b.brief.offer.commitment).toContain("Minimum 3 months");
+		expect(b.brief.offer.commitment).toContain("cancel anytime");
 
 		const html = offerEmailHtml({
 			first: "Sofia",
@@ -112,7 +112,7 @@ describe("unit integrity: recurring SKUs must not read as one-off totals (Sofia,
 			program: null,
 		});
 		expect(html).toContain("/ month");
-		expect(html).toContain("Minimum 3 months");
+		expect(html).toContain("cancel anytime");
 	});
 });
 
@@ -363,11 +363,11 @@ describe("the program skeleton describes what was bought (Sofia, Klára, Jonas, 
 		expect("error" in r).toBe(true);
 	});
 
-	it("a recurring package renders its committed minimum, not a two-session engagement", () => {
+	it("a recurring package renders its first month as ongoing, not a two-session engagement", () => {
 		const r = buildProgram(offerById("monthly")!, "2026-09-01", { today: "2026-08-21" });
 		expect("error" in r).toBe(false);
 		if ("error" in r) return;
-		expect(r.sessions.length).toBe(6); // 2/month across the 3-month minimum
+		expect(r.sessions.length).toBe(2); // one month shown; no minimum since 2026-10-06
 		expect(r.continues).toContain("continues monthly");
 		expect(r.sessions.at(-1)!.label).not.toContain("of 2");
 	});

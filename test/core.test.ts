@@ -174,7 +174,7 @@ describe("guardrails + options carry the magnet", () => {
 		expect(o.ai_channel_discount?.pct).toBe(aiDiscount()!.pct);
 		expect(o.ai_channel_discount?.price_before).toBe(fq.price);
 		expect(o.ai_channel_discount?.price_after).toBe(fq.ai_channel_price);
-		expect(o.time_promise?.minutes).toBe(16);
+		expect(o.time_promise?.minutes).toBe(10);
 		expect(slotsOpen()).toBeGreaterThan(0);
 	});
 

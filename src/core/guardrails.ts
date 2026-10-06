@@ -105,7 +105,7 @@ export function guardrailLines(offerId?: string): string[] {
 		// The previous wording ("the final rate never goes below 361") was broken by the first
 		// rung of the only concession the system is allowed to make, which three testers caught.
 		`B2B only: ${meta.negotiation.rule} The one concession: up to ${meta.negotiation.max_free_sessions} sessions at no charge, on top of the package, and only on: ${meta.negotiation.triggers.join("; ")}. This never moves the ${eur(listRate())} list rate — it adds unbilled sessions. The effective rate across all sessions is therefore lower, and it is computed and shown to you on every qualifying deal: quote BOTH numbers, never just the flattering one.`,
-		`Speed is a ceiling, not an estimate: ${meta.time_promise.claim} The offer email lands the moment the price is agreed, so the promise holds by construction. Say "no more than 16 minutes", never "about 16 minutes".`,
+		`Speed is a ceiling, not an estimate: ${meta.time_promise.claim} The offer email lands the moment the price is agreed, so the promise holds by construction. Say "no more than 10 minutes", never "about 10 minutes".`,
 		// Added 2026-08-16. A live run showed the model improvising a business case — a
 		// replacement-cost figure, an ROI multiple and a recovered-hours number — when a
 		// visitor asked how to get their manager to pay. Plausible arithmetic, no source.
