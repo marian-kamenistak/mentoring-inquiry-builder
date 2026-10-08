@@ -38,6 +38,9 @@ export type Offer = {
 	id: string;
 	name: string;
 	price: number;
+	/** Company SKUs only: named residence retainer on top of paid sessions × per_session
+	 *  (decisions/2026-09-12-mir-reprice-retainer.md). */
+	retainer?: number;
 	unit?: string;
 	/** true -> price AND sessions multiply by leaders_count. false -> flat SKU. */
 	per_leader?: boolean;
@@ -192,8 +195,16 @@ const round2 = (n: number): number => Math.round(n * 100) / 100;
 /** The ONE list rate per paid 60-minute session (395). Packages add free sessions, never a lower rate. */
 export const listRate = (): number => offerById("first-quarter")?.per_session ?? offerById("single-session")!.price;
 
-/** What an AI-channel buyer pays per delivered session on THIS package: ai_channel_price ÷ sessions. */
-export const doorRate = (offer: Offer): number => round2((offer.ai_channel_price ?? offer.price) / (offer.sessions ?? 1));
+/** The part of a price that pays for sessions. A residence retainer is a named line ON TOP of
+ *  the sessions, not session money (decisions/2026-09-12-mir-reprice-retainer.md; Marian
+ *  2026-10-08: the floor checks the session share only). Scaled by the same ratio, so it holds
+ *  for the list price, the AI-door price and any multiple of either. */
+export const sessionShare = (offer: Offer, price: number): number =>
+	offer.retainer && offer.price > 0 ? price * (1 - offer.retainer / offer.price) : price;
+
+/** What an AI-channel buyer pays per delivered session on THIS package: the session share of
+ *  ai_channel_price ÷ sessions. */
+export const doorRate = (offer: Offer): number => round2(sessionShare(offer, offer.ai_channel_price ?? offer.price) / (offer.sessions ?? 1));
 
 /** The headline AI-channel percentage. Throws rather than defaulting — a silent "16" is how the old figure outlived its decision. */
 export function discountPct(): number {
@@ -263,7 +274,10 @@ export function effectiveRate(
 ): { perSession: number; sessions: number; floor: number; breachesFloor: boolean } {
 	const sessions = sessionsDelivered(offer, leaders) + Math.max(0, freeSessions);
 	const floor = floorPerSession();
-	const perSession = sessions > 0 ? Math.round((finalPrice / sessions) * 100) / 100 : finalPrice;
+	// Retainer excluded: with it counted, 9,299 / 26 sessions read as 357 and the 2 → 4 → 8
+	// concession never tripped the floor, while the session money alone was at 246.
+	const money = sessionShare(offer, finalPrice);
+	const perSession = sessions > 0 ? Math.round((money / sessions) * 100) / 100 : money;
 	return { perSession, sessions, floor, breachesFloor: floor > 0 && perSession < floor };
 }
 

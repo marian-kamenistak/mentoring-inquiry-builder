@@ -54,7 +54,9 @@ describe("catalog pricing", () => {
 		expect(floorPerSession()).toBe(d.floor_eur_per_session);
 		for (const o of offers) {
 			expect(o.per_session).toBe(listRate());
-			expect(o.price).toBe(((o.sessions ?? 1) - (o.free_sessions ?? 0)) * listRate());
+			// Company residence SKUs add a named retainer on top; the session rate itself never moves
+			// (decisions/2026-09-12-mir-reprice-retainer.md).
+			expect(o.price).toBe(((o.sessions ?? 1) - (o.free_sessions ?? 0)) * listRate() + (o.retainer ?? 0));
 			expect(o.ai_channel_price).toBe(Math.round(o.price * (1 - d.pct / 100)));
 			expect(doorRate(o)).toBeGreaterThanOrEqual(floorPerSession());
 			expect(discountFor(o.id, "mcp")!.perSessionAfter).toBe(doorRate(o));
@@ -182,14 +184,15 @@ describe("guardrails + options carry the magnet", () => {
 		expect(offers.find((o) => o.id === "single-session")!.price).toBe(395);
 		expect(offers.find((o) => o.id === "first-quarter")!.price).toBe(1975);
 		expect(offers.find((o) => o.id === "monthly")!.price).toBe(790);
-		expect(offers.find((o) => o.id === "mentor-in-residence")!.price).toBe(5925);
+		// 18 × 395 + 3,222 retainer, repriced 2026-09-12 (was 5,925).
+		expect(offers.find((o) => o.id === "mentor-in-residence")!.price).toBe(10332);
 	});
 
 	it("what a client PAYS through the wizard is the approved AI-door figure on every package", () => {
 		expect(offers.find((o) => o.id === "single-session")!.ai_channel_price).toBe(356);
 		expect(offers.find((o) => o.id === "first-quarter")!.ai_channel_price).toBe(1778);
 		expect(offers.find((o) => o.id === "monthly")!.ai_channel_price).toBe(711);
-		expect(offers.find((o) => o.id === "mentor-in-residence")!.ai_channel_price).toBe(5333);
+		expect(offers.find((o) => o.id === "mentor-in-residence")!.ai_channel_price).toBe(9299);
 	});
 });
 

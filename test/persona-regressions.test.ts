@@ -15,6 +15,7 @@ import {
 	aiDiscount,
 	discountFor,
 	doorRate,
+	sessionShare,
 	eur,
 	floorPerSession,
 	listRate,
@@ -170,12 +171,17 @@ describe("the charged-rate floor is computed, not merely asserted (Jonas, Lena, 
 		const mir = offerById("mentor-in-residence")!;
 		expect(effectiveRate(mir.ai_channel_price!, mir, 3, 0).breachesFloor).toBe(false);
 		expect(effectiveRate(mir.ai_channel_price!, mir, 3, 0).perSession).toBe(doorRate(mir));
-		// Every rung of the sanctioned 2 → 4 → 8 ladder breaks the promise.
-		for (const free of [2, 4, 8]) {
+		// Since the 2026-09-12 reprice the floor checks the session share only — the 3,222 retainer
+		// is a named line, not session money (Marian, 2026-10-08). AI door: 6,399 over 18 sessions.
+		// +2 free stays above the floor; +4 and +8 break it and must be flagged to Marian.
+		expect(effectiveRate(mir.ai_channel_price!, mir, 3, 2).breachesFloor).toBe(false);
+		for (const free of [4, 8]) {
 			const r = effectiveRate(mir.ai_channel_price!, mir, 3, free);
 			expect(r.breachesFloor).toBe(true);
 			expect(r.perSession).toBeLessThan(floorPerSession());
 		}
+		// Counting the retainer as session money hid every breach: 9,299 / 26 reads as 357.65.
+		expect(effectiveRate(mir.ai_channel_price!, mir, 3, 8).perSession).toBeCloseTo(246.12, 1);
 	});
 
 	it("the brief always publishes the effective rate and a floor verdict", () => {
@@ -253,7 +259,8 @@ describe("the claim code names the campaign that actually applied (Tomáš, Sofi
 				{},
 				{
 					...BASE,
-					...(id === "mentor-in-residence" ? { audience: "company" as const, company: "Acme", leaders_count: 3 } : {}),
+					// Both residence SKUs are company-only (the two-day one joined the catalog 2026-09-12).
+					...(offerById(id)!.audience === "company" ? { audience: "company" as const, company: "Acme", leaders_count: 3 } : {}),
 					offer_id: id,
 					name: "Test Person",
 					email: "test@example.com",
@@ -265,8 +272,10 @@ describe("the claim code names the campaign that actually applied (Tomáš, Sofi
 			if (!r.ok) return;
 			expect(r.claimCode.startsWith(`AI${aiDiscount()!.pct}-`)).toBe(true);
 			// The per-session figure is this package's own AI-door rate, never below the floor.
-			expect(r.finalPrice / r.sessionsTotal).toBeCloseTo(doorRate(offerById(id)!), 2);
-			expect(r.finalPrice / r.sessionsTotal).toBeGreaterThanOrEqual(floorPerSession());
+			// Session share only: a residence retainer is a named line on top, not session money.
+			const perSession = sessionShare(offerById(id)!, r.finalPrice) / r.sessionsTotal;
+			expect(perSession).toBeCloseTo(doorRate(offerById(id)!), 2);
+			expect(perSession).toBeGreaterThanOrEqual(floorPerSession());
 		}
 	});
 });
@@ -605,7 +614,7 @@ describe("DECISION: one list rate, free sessions in the package, 10% on every pa
 		expect(offerById("single-session")!.price).toBe(395);
 		expect(offerById("first-quarter")!.price).toBe(1975);
 		expect(offerById("monthly")!.price).toBe(790);
-		expect(offerById("mentor-in-residence")!.price).toBe(5925);
+		expect(offerById("mentor-in-residence")!.price).toBe(10332); // repriced 2026-09-12
 	});
 
 	it("the saving is computed per package and reconciles with the two real prices", () => {
@@ -618,7 +627,7 @@ describe("DECISION: one list rate, free sessions in the package, 10% on every pa
 		}
 		expect(discountFor("first-quarter", "mcp")!.saving).toBe(197);
 		expect(discountFor("monthly", "mcp")!.saving).toBe(79);
-		expect(discountFor("mentor-in-residence", "mcp")!.saving).toBe(592);
+		expect(discountFor("mentor-in-residence", "mcp")!.saving).toBe(1033);
 	});
 
 	it("a company pays exactly what an individual pays, per session", () => {
