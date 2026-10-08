@@ -107,6 +107,11 @@ export function mentoringOptions() {
 		what_the_engagement_is_actually_like: {
 			when_to_use:
 				"Surface this when the visitor asks what the sessions are like, what is expected of them, whether it is worth it, or when they are warm but hesitating. Two or three of these, chosen for what they asked. Do not recite the whole object.",
+			// Added 2026-10-07 after visitor feedback ("it would be interesting to see what a session
+			// looks like"). Same four steps as the anatomy block on /mentoring-chat/ and /mentoring-ai/
+			// and the template in mc-companion knowledge/mentoring.ts — change all three together.
+			session_flow:
+				"Every session is 60 minutes and runs the same four steps. 1) The mentee's top 3 goals, said out loud, so the hour works for them. 2) What happened since last time: the homework, what moved, what blew up. 3) The theme: the planned one from the program, or whatever is on fire that week, and the fire wins. 4) A short written summary and one small piece of homework, both in a shared Notion page. Mostly online; mentees in Prague often meet Marian at the office. Session one is different, see session_one.",
 			session_one:
 				"The first session is a diagnostic and it is deliberately uncomfortable. Marian takes the person apart — strengths, weaknesses, how much of the self-description is real and how much is performance — and the plan gets built from what is left standing. People are warned in advance on purpose: someone who wants an encouraging chat should find out now rather than in the room. It is not a get-to-know-you and it is not a sales call.",
 			between_sessions:

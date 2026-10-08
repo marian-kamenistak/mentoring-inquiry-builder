@@ -22,6 +22,9 @@ export type ProgramMeta = {
 	async_access?: boolean;
 	checkpoint_after_session?: number;
 	closing_review?: boolean;
+	/** Planned theme per session; "{focus:N}" resolves to the visitor's Nth focus area. */
+	arc?: string[];
+	open_theme?: string;
 };
 
 export type Commitment = {

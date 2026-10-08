@@ -7,7 +7,7 @@
  * shifted off weekends (Sat -> Mon, Sun -> Mon). Dates are planning targets; the intro
  * call fixes the real cadence.
  */
-import type { Offer } from "./catalog";
+import { focusAreas, type Offer } from "./catalog";
 
 export type ProgramSession = {
 	n: number;
@@ -15,6 +15,8 @@ export type ProgramSession = {
 	minutes: number;
 	kind: "session" | "checkpoint" | "closing-review";
 	label: string;
+	/** Planned theme from the catalog arc; absent when the package carries no arc. */
+	theme?: string;
 };
 
 export type Program = {
@@ -38,7 +40,23 @@ const skipWeekend = (d: Date): Date => {
 	return d;
 };
 
-export function buildProgram(offer: Offer, startDate: string, opts: { today?: string; leaders?: number } = {}): Program | { error: string } {
+/** Resolve one arc entry. "{focus:N}" takes the visitor's Nth agreed focus area (ids resolved
+ *  against the catalog taxonomy, so the model cannot slip an invented theme in); without one the
+ *  session gets the package's open theme. */
+function arcTheme(entry: string | undefined, focusIds: string[], openTheme: string | undefined): string | undefined {
+	if (!entry) return undefined;
+	const m = entry.match(/^\{focus:(\d+)\}$/);
+	if (!m) return entry;
+	const labels = focusIds.map((id) => focusAreas.find((f) => f.id === id)?.label).filter((l): l is string => !!l);
+	const label = labels[Number(m[1]) - 1];
+	return label ? `Your focus: ${label}` : openTheme;
+}
+
+export function buildProgram(
+	offer: Offer,
+	startDate: string,
+	opts: { today?: string; leaders?: number; focusAreaIds?: string[] } = {},
+): Program | { error: string } {
 	if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate)) return { error: "start_date must be YYYY-MM-DD" };
 	const start = new Date(`${startDate}T00:00:00Z`);
 	if (Number.isNaN(start.getTime())) return { error: `invalid start_date "${startDate}"` };
@@ -62,18 +80,24 @@ export function buildProgram(offer: Offer, startDate: string, opts: { today?: st
 		const date = skipWeekend(raw);
 		const isCheckpoint = p.checkpoint_after_session !== undefined && i + 1 === p.checkpoint_after_session;
 		const isClosing = p.closing_review === true && i + 1 === count;
+		// Feedback 2026-10-07: "Session 2 of 6" told the visitor nothing about five of the six
+		// sessions. The arc gives each one its planned theme; packages without one are unchanged.
+		const theme = arcTheme(p.arc?.[i], opts.focusAreaIds ?? [], p.open_theme);
 		sessions.push({
 			n: i + 1,
 			date: iso(date),
 			minutes: p.session_minutes,
 			kind: isClosing ? "closing-review" : isCheckpoint ? "checkpoint" : "session",
-			label: isClosing
+			label: theme
+				? `Session ${i + 1} of ${count} — ${theme}`
+				: isClosing
 				? `Session ${i + 1} of ${count} — closing review: score progress against your definition of success`
 				: isCheckpoint
 					? `Session ${i + 1} of ${count} — mid-point checkpoint: are we working on the right things?`
 					: perMonth
 						? `Session ${i + 1}` // recurring: no "of N", the engagement has no end date
 						: `Session ${i + 1} of ${count}`,
+			...(theme ? { theme } : {}),
 		});
 	}
 	const leaders = Math.max(1, opts.leaders ?? 1);
@@ -95,7 +119,7 @@ export function buildProgram(offer: Offer, startDate: string, opts: { today?: st
 		...(leaders > 1 && offer.per_leader !== true
 			? { allocation: `These ${sessions.length} sessions are a pool shared across ${leaders} leaders — roughly ${Math.floor(sessions.length / leaders)} each. Who takes which slot is agreed on the intro call; this skeleton deliberately does not assign them.` }
 			: {}),
-		caveat: "Dates are planning targets computed from the package cadence; the intro call fixes the real schedule. Public holidays are not accounted for — check the dates against your own calendar.",
+		caveat: `Dates are planning targets computed from the package cadence; the intro call fixes the real schedule. Public holidays are not accounted for — check the dates against your own calendar.${p.arc ? " Themes are the plan, not a script: every session still starts from what is on fire that week." : ""}`,
 	};
 }
 

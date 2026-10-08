@@ -45,6 +45,23 @@ describe("program engine (deterministic-promise rule)", () => {
 		}
 	});
 
+	it("gives every session a planned theme, focus sessions from the visitor's focus areas", () => {
+		const p = buildProgram(fq, "2026-09-07", { today: TODAY, focusAreaIds: ["scaling-org", "hiring-mis-hires"] }) as Program;
+		for (const s of p.sessions) expect(s.theme).toBeTruthy();
+		expect(p.sessions[0].theme).toMatch(/^Diagnostic/);
+		expect(p.sessions[1].theme).toContain("Scaling the org");
+		expect(p.sessions[3].theme).toContain("Hiring, mis-hires");
+		expect(p.sessions[1].label).toBe(`Session 2 of 6 — ${p.sessions[1].theme}`);
+		expect(p.sessions[2].kind).toBe("checkpoint");
+		expect(p.sessions[5].kind).toBe("closing-review");
+	});
+
+	it("falls back to the open theme without focus areas, and ignores unknown ids", () => {
+		const p = buildProgram(fq, "2026-09-07", { today: TODAY, focusAreaIds: ["made-up-area"] }) as Program;
+		expect(p.sessions[1].theme).toBe(fq.program!.open_theme);
+		expect(p.sessions[3].theme).toBe(fq.program!.open_theme);
+	});
+
 	it("rejects malformed dates", () => {
 		expect("error" in buildProgram(fq, "next monday")).toBe(true);
 		expect("error" in buildProgram(fq, "2026-13-40")).toBe(true);

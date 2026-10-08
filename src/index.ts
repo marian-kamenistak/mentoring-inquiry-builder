@@ -159,6 +159,7 @@ const PROGRAM_SHAPE = {
 		.regex(/^\d{4}-\d{2}-\d{2}$/)
 		.describe("First session date, YYYY-MM-DD, today or later (ask the visitor; default to next Monday)"),
 	leaders_count: z.number().int().optional().describe("Company deals: how the pooled sessions are shared. Changes the allocation note, never the schedule."),
+	focus_area_ids: z.array(z.string()).optional().describe("Agreed focus area ids in priority order. They become the planned themes of the focus sessions; without them those sessions read as open."),
 };
 
 const INTRO_SHAPE = {
@@ -331,16 +332,16 @@ export class MentoringInquiryBuilder extends McpAgent<Env, unknown, McpGeo> {
 				title: "Lay out the dated session program for a package",
 				annotations: { ...READ_ONLY },
 				description:
-					"Deterministic session skeleton computed from the package's cadence metadata: dated sessions, the mid-point checkpoint, the closing review against the definition of success. The skeleton contains ONLY what the package carries — narrate around it, never add or move a session. Dates are planning targets; the intro call fixes the real schedule. Call when the visitor asks what the engagement actually looks like.",
+					"Deterministic session skeleton computed from the package's cadence metadata: dated sessions, each with its planned theme (diagnostic, the visitor's focus areas — pass focus_area_ids — the mid-point checkpoint, operational to strategic, the closing review against the definition of success). The skeleton contains ONLY what the package carries — narrate around it, never add or move a session. Dates are planning targets; the intro call fixes the real schedule. Call when the visitor asks what the engagement actually looks like.",
 				inputSchema: permissiveShape(PROGRAM_SHAPE),
 			},
 			async (raw) => {
 				const parsed = parseArgs("design_mentoring_program", PROGRAM_SHAPE, raw);
 				if (!parsed.ok) return guidance(parsed);
-				const { offer_id, start_date, leaders_count } = parsed.data;
+				const { offer_id, start_date, leaders_count, focus_area_ids } = parsed.data;
 				const offer = offerById(offer_id);
 				if (!offer) return toolResult({ error: `unknown offer_id — valid: ${OFFER_IDS.join(", ")}` });
-				const p = buildProgram(offer, start_date, { leaders: leaders_count });
+				const p = buildProgram(offer, start_date, { leaders: leaders_count, focusAreaIds: focus_area_ids });
 				if ("error" in p) return toolResult({ error: p.error }, { offerId: offer.id });
 				return toolResult(
 					{ program: p, rendered: renderProgram(p) },

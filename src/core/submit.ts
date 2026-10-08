@@ -236,7 +236,7 @@ export async function submitInquiry(env: SubmitEnv, input: SubmitInput): Promise
 
 	let program: Program | null = null;
 	if (input.start_date) {
-		const p = buildProgram(offer, input.start_date);
+		const p = buildProgram(offer, input.start_date, { focusAreaIds: input.focus_area_ids });
 		if (!("error" in p)) program = p;
 	}
 

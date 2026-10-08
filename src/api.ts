@@ -57,7 +57,8 @@ export function handleApi(path: string, url: URL, env: { CLAIM_SECRET?: string }
 		const startDate = url.searchParams.get("start_date") ?? "";
 		const offer = offerById(offerId);
 		if (!offer) return json({ error: `unknown offer_id — valid: ${OFFER_IDS}` }, 400);
-		const p = buildProgram(offer, startDate);
+		const focus = (url.searchParams.get("focus") ?? "").split(",").map((f) => f.trim()).filter(Boolean);
+		const p = buildProgram(offer, startDate, { focusAreaIds: focus });
 		if ("error" in p) return json({ error: p.error }, 400);
 		return json({ program: p, rendered: renderProgram(p) });
 	}
@@ -143,7 +144,7 @@ function openapi() {
 			"/program": {
 				get: {
 					summary: "Deterministic dated session skeleton for a package",
-					parameters: [q("offer_id", OFFER_IDS), q("start_date", "YYYY-MM-DD")],
+					parameters: [q("offer_id", OFFER_IDS), q("start_date", "YYYY-MM-DD"), q("focus", "Comma-separated focus area ids in priority order; they become the planned session themes", false)],
 					responses: ok,
 				},
 			},
