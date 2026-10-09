@@ -19,19 +19,20 @@ const entryAtStage = (title: string) => ({
 
 describe("stage ladder", () => {
 	it("ranks the live Attio ladder in order", () => {
-		expect(STAGE_LADDER.map(stageRank)).toEqual([0, 1, 2, 3, 4, 5, 6]);
+		expect(STAGE_LADDER.map(stageRank)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8]);
 	});
 
 	it("treats blank, unknown and non-string stages as unranked so they can be seeded", () => {
 		expect(stageRank(null)).toBe(-1);
 		expect(stageRank("")).toBe(-1);
-		expect(stageRank("Proposal sent")).toBe(-1); // a value from an older ladder that no longer exists
+		expect(stageRank("Old proposal stage")).toBe(-1); // a value no ladder knows
 		expect(stageRank(42)).toBe(-1);
 	});
 
 	it("matches case-insensitively — Attio titles are hand-typed and 'Intro arranged' happens", () => {
 		expect(stageRank("INTRO ARRANGED")).toBe(1);
-		expect(stageRank("  Formal 1st Arranged  ")).toBe(4);
+		expect(stageRank("  Formal 1st Arranged  ")).toBe(6);
+		expect(stageRank("Proposal sent")).toBe(3);
 	});
 
 	it("advances forward only, which is the whole point of ranking instead of equality", () => {
@@ -258,5 +259,15 @@ describe("boost webhook", () => {
 		const res = await handleBookingHook(post({ email: "buyer@corp.com" }), { BOOKING_HOOK_SECRET: SECRET, ATTIO_TOKEN: "t" }, new URL("https://x/mcp/mentoring/api/mentoring-boost?secret=wrong"), "boost");
 		expect(res.status).toBe(403);
 		expect(calls).toHaveLength(0);
+	});
+});
+
+describe("proposal stages (after-intro pack, 2026-10-09)", () => {
+	it("a booking still advances an entry holding a proposal", () => {
+		expect(canAdvance("proposal sent", "formal 1st arranged")).toBe(true);
+		expect(canAdvance("proposal accepted", "formal 1st arranged")).toBe(true);
+	});
+	it("an intro booking cannot drag a proposal back down", () => {
+		expect(canAdvance("proposal sent", "intro arranged")).toBe(false);
 	});
 });

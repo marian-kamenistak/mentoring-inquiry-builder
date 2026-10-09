@@ -17,11 +17,15 @@ import { meta, offerById } from "./catalog";
  * only one on the list, so it drives Marian's "Mentoring flow" kanban — the titles here must
  * match Attio exactly or the whole entry write 400s (Attio rejects the request, not the field).
  * Verified against the live list 2026-08-30; mirrors agentic-os ops-newcontact/scripts/routing.py.
+ * 2026-10-09: `proposal sent` / `proposal accepted` added for the after-intro pack (mc-web /boosts/),
+ * so an intro booking can no longer drag an entry that already holds a proposal back down the ladder.
  */
 export const STAGE_LADDER = [
 	"Not yet",
 	"intro arranged",
 	"intro passed",
+	"proposal sent",
+	"proposal accepted",
 	"formal invite sent",
 	"formal 1st arranged",
 	"mentoring",
