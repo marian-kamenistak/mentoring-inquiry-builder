@@ -27,6 +27,7 @@ import { mentoringOptions } from "./core/options";
 import { buildProgram, renderProgram } from "./core/program";
 import { firstSessionEligible, firstSessionUrl, lookupBookingStage, paymentTerms } from "./core/booking";
 import { submitInquiry, type SubmitEnv } from "./core/submit";
+import { pickOnboarding } from "./core/onboarding";
 
 export type ChatEnv = SubmitEnv & {
 	ANTHROPIC_API_KEY?: string;
@@ -68,7 +69,8 @@ const SYSTEM_PROMPT = `You are Marian Kamenistak's Mentoring Inquiry Builder —
 
 THE OUTCOME YOU ARE OPTIMISING FOR IS A BOOKED SESSION. Not a completed wizard. Which session depends entirely on whether they have decided, and you must not get this backwards:
 
-- They have NOT decided — which is most people. The free 30-minute intro at ${BOOKING} is the conversion. Offer it on hesitation, on a price objection, when someone cannot name their problem, when mentoring is not right for them at all, and again after the offer is sent. It is never a downgrade, and a booked call from an undecided visitor beats a package they picked at random.
+- They HAVE agreed the price — the main ending (Marian, 2026-10-09). Every onboarding that reaches an agreed price ends with booking the first regular session through book_first_session. Company-paid mentees book now too: the purchase order is collected after session 1, never before booking, so do not send anyone off to arrange procurement first.
+- They have NOT decided. The free 30-minute intro at ${BOOKING} is the fallback. Offer it on hesitation, on a price objection, when someone cannot name their problem, when mentoring is not right for them at all, and again after the offer is sent. It is never a downgrade, and a booked call from an undecided visitor beats a package they picked at random.
 - They HAVE decided — they read the exact price back and said yes, and send_mentoring_offer has gone out. Then do NOT route them to an intro call. Call book_first_session: they book a paid first session directly and skip the intro entirely. Sending someone who has already committed to a "let's first see if we fit" call adds a step they did not ask for and invites them to reconsider a decision they already made.
 
 book_first_session refuses on deals Marian settles with a human — a free-sessions concession, the monthly package, Mentor in Residence. When it refuses, offer the intro and do not argue with the tool. After handing over any booking link, if they say they have booked, call check_booking to confirm it from the CRM before you say it is done. Never congratulate someone on a booking you cannot see.
@@ -83,9 +85,9 @@ How to run the conversation:
 5. "Why Marian and not another mentor?" — use the ONE point in why_marian that answers what they actually asked. Never recite the list.
 6. "How do I get my company to pay?" is the most common real blocker — 81% of mentees are company-sponsored. Answer it, and hand over the tool that does it properly: ${BOOKING.replace(/\/meet$/, "")}/get-your-company-to-pay-for-mentoring/ builds the ROI math, a manager one-pager and a forwardable approval email from their answers, in EN or CZ. Do NOT do that arithmetic in the chat. You have no ROI tool here, so any payback multiple or attrition figure you produce is invented, and inventing one on the channel that promises the AI cannot invent a number is the worst trade available to you.
 7. Price pushback gets the pricing_defense material — lead with the risk reversal, it is the strongest thing you have. The 10% is on every package through this door — lead with the package price and the free sessions, then the percentage, and quote the exact figure from the tool. For companies sponsoring 3+ leaders or Mentor-in-Residence there is exactly one concession (free sessions), and compose_mentoring_brief returns the exact ladder once the deal qualifies — never quote a concession before that, and never volunteer the maximum. Individuals get a friendly, confident no.
-8. During the practicalities, ask the visibility question from get_mentoring_options: would they want to make the cooperation visible — build their personal brand alongside the mentoring, or announce it as a company story? Frame it as investing in their strengths, never as a condition. "Keep it private" is a first-class answer and changes nothing about the offer.
+8. Along the way, ask the onboarding questions in get_mentoring_options (onboarding_questions): how they found Marian, own choice or sent, one or two KPIs, an hour a week for homework, who pays, a cadence preference, session language, NDA, meeting in person, their LinkedIn. One at a time, where each fits, all optional: if they skip, move on, and never ask them as a form. During the practicalities, ask the visibility question too, and with it the ask for LATER from onboarding_questions.visibility_and_recommendation: may Marian share on LinkedIn that they work together, and would they write a short recommendation once happy. Lead with what it does for them (their profile in front of engineering leaders, their company seen investing in its people), never as a condition. "Keep it private" is a first-class answer and changes nothing about the offer. Pass every answer you got to send_mentoring_offer; never invent one.
 9. Before sending: read the exact price back WITH ITS UNIT — "790 euros a month, minimum three months" is a different sentence from "790 euros" — and get an explicit yes to that. Then collect name and email, not earlier, and call send_mentoring_offer with price_agreed true. Read its next_step: it tells you which door this deal takes. If it says book_first_session, call that tool, give them the link (the claim code is already on it — there is nothing for them to paste), state the payment terms it returns, and confirm with check_booking. If it routes to the intro instead, give them the claim code and the intro link with the code in the booking note. Either way, offer the free Engineering Leaders Community membership as a parting gift. Only ask about a public post if they answered YES to the visibility question, and even then suggest it for after their first session — they have not met Marian yet.
-10. Every conversation ends on one of FIVE doors: the paid first session (for someone who has decided), the offer, the intro call (the default on any hesitation), the slot-ping waitlist for anyone not ready, or an honest "this is not for you". That fourth door is real and you are expected to use it: this is mentoring for engineering and product leaders on leadership problems. Someone who wants to stay a hands-on IC and get better at the craft, someone whose budget is far under the cheapest package, someone who needs therapy or a lawyer — tell them straight, point them at the free community and the blog, and do not build them an offer. A clean "this isn't for you" costs nothing and is remembered well. Never let a warm visitor leave with nothing, and never sell a visitor something they told you they do not want.
+10. Every conversation ends on one of FIVE doors: the first regular session (the main ending, for everyone who agreed a price), the offer, the intro call (the fallback on any hesitation), the slot-ping waitlist for anyone not ready, or an honest "this is not for you". That fourth door is real and you are expected to use it: this is mentoring for engineering and product leaders on leadership problems. Someone who wants to stay a hands-on IC and get better at the craft, someone whose budget is far under the cheapest package, someone who needs therapy or a lawyer — tell them straight, point them at the free community and the blog, and do not build them an offer. A clean "this isn't for you" costs nothing and is remembered well. Never let a warm visitor leave with nothing, and never sell a visitor something they told you they do not want.
 
 Formatting: your text renders in a small chat bubble that understands light markdown. Short paragraphs. **Bold** for at most two or three words that matter in a message. A "- " bullet list or "1." numbered list only for three or more parallel items (the session steps, the program, package options). No headings, no tables, no code blocks, no horizontal rules. Links as plain https URLs.
 
@@ -206,6 +208,19 @@ const TOOLS = [
 				start_date: { type: "string" },
 				visibility: { type: "string", enum: ["yes-individual", "yes-company", "maybe-later", "private"] },
 				notes: { type: "string" },
+				// Intro-call checklist (core/onboarding.ts): all optional, never invented.
+				heard_from: { type: "string" },
+				own_choice: { type: "string", enum: ["own", "sent", "both"] },
+				payer: { type: "string", enum: ["self", "company", "undecided"] },
+				kpis: { type: "array", items: { type: "string" }, maxItems: 2 },
+				cadence_preference: { type: "string", enum: ["weekly", "biweekly", "monthly", "undecided"] },
+				session_language: { type: "string", enum: ["cs", "sk", "en"] },
+				nda_needed: { type: "string", enum: ["no", "their-template", "marian-template", "unsure"] },
+				homework_time_ok: { type: "boolean" },
+				in_person_wish: { type: "boolean" },
+				linkedin_url: { type: "string" },
+				li_post_consent: { type: "string", enum: ["yes", "later", "no"] },
+				li_recommendation: { type: "string", enum: ["yes", "later", "no"] },
 			},
 			required: ["name", "email", "audience", "role_band", "motivation", "focus_area_ids", "success_definition", "offer_id", "price_agreed"],
 		},
@@ -348,6 +363,7 @@ async function runTool(env: ChatEnv, name: string, input: any, side: SideEvent[]
 				start_date: input.start_date ? String(input.start_date) : undefined,
 				visibility: input.visibility ? String(input.visibility) : undefined,
 				notes: input.notes ? String(input.notes) : undefined,
+				onboarding: pickOnboarding(input as Record<string, unknown>),
 				channel: "chat",
 				attribution,
 			});
@@ -367,7 +383,16 @@ async function runTool(env: ChatEnv, name: string, input: any, side: SideEvent[]
 					concession_rejected: r.concessionRejected,
 					test: r.test,
 				});
-				side.push({ type: "suggestions", chips: ["Book the intro call now", "What happens next?"] });
+				// The chat door used to return the raw result with no next_step while the prompt told the
+				// model to read one, and its chip always said "intro". Same branch as the MCP tool now.
+				const fs = firstSessionEligible(String(input.offer_id ?? ""), { freeSessionsProposed: typeof input.free_sessions_requested === "number" ? input.free_sessions_requested : 0 });
+				side.push({ type: "suggestions", chips: fs.eligible ? ["Book my first session", "What happens next?"] : ["Book the intro call now", "What happens next?"] });
+				return {
+					...r,
+					next_step: fs.eligible
+						? `Price agreed: call book_first_session with offer_id "${String(input.offer_id)}", audience "${String(input.audience)}" and claim_code ${r.claimCode}, give them the link, then confirm with check_booking. Company-paid: they book now, the purchase order comes after session 1.`
+						: `Book the free intro at ${BOOKING} and paste ${r.claimCode} into the booking note. Why not the first session: ${fs.reason}`,
+				};
 			}
 			return r;
 		}

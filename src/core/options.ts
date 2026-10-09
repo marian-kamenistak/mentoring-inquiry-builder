@@ -8,6 +8,7 @@
  * data-defined concession.
  */
 import { MC_FACTS, PRICING_DEFENSE, SITE, WHY_MARIAN } from "../content";
+import { ONBOARDING_QUESTIONS } from "./onboarding";
 import { aiDiscount, eur, focusAreas, meta, motivations, offers, priceDisplay, routing, sessionsBreakdown, visibilityOptions } from "./catalog";
 import { ctaBlock, guardrailLines } from "./guardrails";
 
@@ -94,6 +95,8 @@ export function mentoringOptions() {
 			when: "Ask it during the practicalities, after the focus areas are agreed — never as a condition of anything.",
 			note: "This is an investment-in-strengths signal AND consent capture: Marian's rule is no client names in public without explicit permission, so 'private' is a first-class answer and changes nothing about the offer. A 'yes' opens doors later: co-announcement post, named testimonial, the mentee mosaic on the homepage.",
 		},
+		// The intro-call checklist (2026-10-09), asked where each fits. All optional.
+		onboarding_questions: ONBOARDING_QUESTIONS,
 		next_tool:
 			"Ask conversationally (free-text answers are fine — map them to the closest option id), collect their name early, then call match_mentoring_focus with role_band + motivation. After focus areas are agreed, capture their definition of success in their own words, then compose_mentoring_brief.",
 		why_marian: {
@@ -117,7 +120,7 @@ export function mentoringOptions() {
 			between_sessions:
 				"Every session ends with a small piece of homework: talk to this person, put this proposal in front of that one, build this presentation. Small on purpose, because the mentee still has a day job and Marian will not put that at risk. It is also the filter — the interest is in people who do things between sessions rather than people who enjoy talking about them.",
 			cadence:
-				"60 minutes, weekly or bi-weekly. Which of the two is settled AFTER the first session rather than sold up front, because that is when Marian can see how fast the person actually wants to move. If they ask you to commit to a cadence before then, say that it is deliberately left open.",
+				"60 minutes, weekly or bi-weekly. Which of the two is settled AFTER the first session rather than sold up front, because that is when Marian can see how fast the person actually wants to move. Asking for their preference is fine (onboarding_questions) as long as you say the final rhythm is settled after session 1.",
 			in_person:
 				"Mostly online. Marian is in Prague and there is an office in the centre, so mentees who are in Prague — including the ones who pass through occasionally — usually meet him in person for the start and roughly monthly after that. He also brings mentees along to the community meetups.",
 			network:
@@ -176,8 +179,9 @@ export function mentoringOptions() {
 			how: "If the deal qualifies, compose_mentoring_brief returns the exact concession available for it, with the effective per-session rate each step produces. Do not quote a concession before that.",
 		},
 		endings: {
+			first_session: `THE MAIN ENDING (Marian, 2026-10-09). Price agreed → send_mentoring_offer → book_first_session: they book the first regular 60-minute session at ${meta.first_session?.url ?? ""}. Company-paid mentees book now too; the purchase order is collected after session 1. Monthly, Mentor in Residence and concession deals go to the intro instead, because Marian settles those terms on a call.`,
 			offer: "Ready to move → agree the exact price out loud, then send_mentoring_offer: the formal itemized offer with the claim code, in their inbox in minutes.",
-			intro_call: `Wants a human first, hesitates, or cannot name the problem → the free 30-minute intro at ${meta.booking_url}. This is the conversion event this whole wizard exists to produce. Offer it at EVERY step, including after an error. It is never a downgrade.`,
+			intro_call: `Wants a human first, hesitates, or cannot name the problem → the free 30-minute intro at ${meta.booking_url}. The fallback: offer it on hesitation and after an error. It is never a downgrade, but a visitor who agreed a price books the first session instead.`,
 			waitlist: `Not ready to start yet → the slot-ping waitlist: ${SITE}/#slot-ping. One email when a slot opens, nothing else. This is about WHEN they can start, never about the price, which does not expire with availability.`,
 			// The missing fourth door. Every previous ending was a sale, so the one visitor the
 			// system should have turned away — an IC with €300 who said he never wants to manage

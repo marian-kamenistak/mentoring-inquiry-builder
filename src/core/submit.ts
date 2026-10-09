@@ -40,6 +40,8 @@ import {
 	type Offer,
 } from "./catalog";
 import { buildProgram, renderProgram, type Program } from "./program";
+import { onboardingLines, type OnboardingInput } from "./onboarding";
+import { firstSessionEligible, firstSessionUrl } from "./booking";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const INQUIRIES_LIST_SLUG = "mentoring_ai_inquiries";
@@ -71,6 +73,8 @@ export type SubmitInput = {
 	start_date?: string;
 	visibility?: string;
 	notes?: string;
+	/** Intro-call checklist answers (core/onboarding.ts), all optional. */
+	onboarding?: OnboardingInput;
 	channel: "chat" | "mcp";
 	attribution?: Attribution;
 };
@@ -172,6 +176,11 @@ export async function submitInquiry(env: SubmitEnv, input: SubmitInput): Promise
 	const company = (input.company ?? "").trim().slice(0, 150);
 	const successDef = input.success_definition.trim().slice(0, 1500);
 	const notes = (input.notes ?? "").trim().slice(0, 1000);
+	const onb = input.onboarding ?? {};
+	const onbLines = onboardingLines(onb);
+	// The CRM copy carries the onboarding answers with the free text, so the intro-call checklist
+	// is filled before the first session instead of being asked again.
+	const notesAll = [notes, ...(onbLines.length ? ["Onboarding:", ...onbLines] : [])].filter(Boolean).join("\n").slice(0, 2000);
 	const { channel, audience } = input;
 
 	if (!name) return { ok: false, error: "missing_name" };
@@ -277,10 +286,15 @@ export async function submitInquiry(env: SubmitEnv, input: SubmitInput): Promise
 		`Definition of success (their words): ${successDef}`,
 		...(visibility ? [`Visibility: ${visibilityById(visibility)!.label}`] : []),
 		...(notes ? ["", `Notes: ${notes}`] : []),
+		...(onbLines.length ? ["", "Onboarding:", ...onbLines] : []),
 		...(program ? ["", renderProgram(program)] : []),
 		"",
 		`Claim code: ${code}`,
 	].join("\n");
+
+	// Same eligibility the tool responses use (catalog meta.first_session), so the email, the CRM
+	// status and the Slack line all name the ending the agent was told to offer.
+	const firstSession = firstSessionEligible(input.offer_id, { freeSessionsProposed: input.free_sessions_requested }).eligible;
 
 	const slackPrice = discount
 		? `~${eur(listPrice)}~ → *${priceDisplay(offer, finalPrice)}* (AI channel, -${discount.pct}%)`
@@ -288,7 +302,8 @@ export async function submitInquiry(env: SubmitEnv, input: SubmitInput): Promise
 	const slackText = [
 		`${isTest ? "[TEST] " : ""}:robot_face: *${name}*${company ? ` (${company})` : ""} agreed a *${offer.name}* offer via *${channel}* at ${slackPrice}${freeSessions ? ` +${freeSessions} free sessions proposed` : ""}`,
 		`${audience} · ${roleBandById(input.role_band)!.label} · ${focus.map((f) => f!.id).join(", ")} · ${email}${visibility?.startsWith("yes") ? " · :loudspeaker: open to public announcement" : ""}`,
-		`Claim ${code} · awaiting intro booking · <${ATTIO_LIST_URL}|Mentoring AI Inquiries>`,
+		`Claim ${code} · awaiting ${firstSession ? "first-session" : "intro"} booking · <${ATTIO_LIST_URL}|Mentoring AI Inquiries>`,
+		...(onbLines.length ? [onbLines.join(" · ")] : []),
 	].join("\n");
 
 	// ── Attio: person upsert (+ company link for B2B) + inquiry list entry ──
@@ -320,6 +335,17 @@ export async function submitInquiry(env: SubmitEnv, input: SubmitInput): Promise
 							await attioWrite("attribution patch", `https://api.attio.com/v2/objects/people/records/${personId}`, {
 								method: "PATCH", headers,
 								body: JSON.stringify({ data: { values: attrValues } }),
+							});
+						}
+
+						// Onboarding answers that have a home on the person record (2026-10-09).
+						const personExtra: Record<string, unknown> = {};
+						if (onb.heard_from) personExtra.heard_from = onb.heard_from.slice(0, 200);
+						if (onb.linkedin_url && /linkedin\.com\//i.test(onb.linkedin_url)) personExtra.linkedin = onb.linkedin_url.slice(0, 300);
+						if (Object.keys(personExtra).length) {
+							await attioWrite("onboarding patch", `https://api.attio.com/v2/objects/people/records/${personId}`, {
+								method: "PATCH", headers,
+								body: JSON.stringify({ data: { values: personExtra } }),
 							});
 						}
 
@@ -358,7 +384,7 @@ export async function submitInquiry(env: SubmitEnv, input: SubmitInput): Promise
 						}
 
 						const entryValues: Record<string, unknown> = {
-							status: "Awaiting intro",
+							status: firstSession ? "Awaiting first session" : "Awaiting intro",
 							added_from: channel,
 							audience,
 							role_band: input.role_band,
@@ -381,7 +407,7 @@ export async function submitInquiry(env: SubmitEnv, input: SubmitInput): Promise
 							// The free text they typed: payment preferences, urgency, the seat they
 							// actually sit in. It reached the offer email and stopped there, so the
 							// most actionable thing about a lead existed nowhere in the CRM.
-							...(notes ? { notes } : {}),
+							...(notesAll ? { notes: notesAll } : {}),
 							...(visibility ? { visibility } : {}),
 						};
 
@@ -485,6 +511,7 @@ export async function submitInquiry(env: SubmitEnv, input: SubmitInput): Promise
 						validUntil,
 						code,
 						program,
+						bookUrl: firstSession ? firstSessionUrl(code) : undefined,
 					}),
 				}),
 			}).catch((e) => {
@@ -549,8 +576,10 @@ export function offerEmailHtml(args: {
 	validUntil: string;
 	code: string;
 	program: Program | null;
+	/** Set when the deal may skip the intro: the email then ends on booking the first session. */
+	bookUrl?: string;
 }): string {
-	const { first, offer, sessions, focus, successDef, listPrice, finalPrice, discountPct, freeSessions, leaders, effectivePerSession, isCompany, vat, validUntil, code, program } = args;
+	const { first, offer, sessions, focus, successDef, listPrice, finalPrice, discountPct, freeSessions, leaders, effectivePerSession, isCompany, vat, validUntil, code, program, bookUrl } = args;
 	const offerName = offer.name;
 	const d = aiDiscount();
 	const accent = "#D02E7C";
@@ -593,7 +622,7 @@ export function offerEmailHtml(args: {
     <tr><td class="px" style="background-color:#ffffff;border:1px solid #eee;border-radius:16px;padding:36px 44px 40px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
       <p style="margin:0 0 6px;font-size:12px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:${accent};">Offer ${code}</p>
       <h1 style="margin:0 0 18px;font-size:28px;line-height:1.2;font-weight:600;color:#171717;">Here's the offer we agreed, ${first}.</h1>
-      <p style="margin:0 0 28px;font-size:15px;line-height:1.65;color:#333;">Everything below came out of your own answers — your focus areas, your definition of success, the price we agreed. Marian has the same brief, so the intro call starts from your goals, not a blank page.</p>
+      <p style="margin:0 0 28px;font-size:15px;line-height:1.65;color:#333;">Everything below came out of your own answers — your focus areas, your definition of success, the price we agreed. Marian has the same brief, so ${bookUrl ? "your first session" : "the intro call"} starts from your goals, not a blank page.</p>
       <p style="margin:0 0 2px;font-size:12px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:${accent};">${offerName}${leaders > 1 ? ` × ${leaders} leaders` : ""}</p>
       ${headlinePrice}
       <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
@@ -624,28 +653,29 @@ export function offerEmailHtml(args: {
       <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-top:22px;background-color:#faf7f2;border-radius:12px;">
         <tr><td style="padding:16px 18px;font-size:13px;line-height:1.7;color:#555;">
           <strong style="color:#171717;">${leaders > 1 || isCompany ? "For your finance team" : "The paperwork"}</strong><br>
-          Invoiced by ${esc(meta.entity)}${leaders > 1 || isCompany ? ", your PO number on the invoice" : ""}.<br>
+          Invoiced by ${esc(meta.entity)}${leaders > 1 || isCompany ? (bookUrl ? ". Your purchase order is collected after session 1, nothing to arrange before you book" : ", your PO number on the invoice") : ""}.<br>
           ${vat ? esc(vat) : `Prices in ${esc(meta.currency)}, VAT ${esc(meta.vat)}.`}<br>
-          This offer is valid until ${validUntil}. Nothing here is a contract; final terms are confirmed on the free intro call.
+          This offer is valid until ${validUntil}. Nothing here is a contract${bookUrl ? "" : "; final terms are confirmed on the free intro call"}.
         </td></tr>
       </table>
       <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-top:26px;">
         <tr><td style="border:2px solid ${accent};border-radius:12px;padding:18px 22px;">
           <p style="margin:0 0 6px;font-size:14px;font-weight:700;color:#171717;">Next step:</p>
-          <p style="margin:0;font-size:14px;line-height:1.6;color:#333;">Book your free 30-minute intro call and paste <strong>${code}</strong> into the booking note. ${
+          ${bookUrl ? `<p style="margin:0;font-size:14px;line-height:1.6;color:#333;">Book your first 60-minute session. The link already carries <strong>${code}</strong>, so there is nothing to paste.</p>
+          <p style="margin:8px 0 0;font-size:14px;line-height:1.6;color:#333;">Direct link: <a href="${bookUrl}" style="color:${accent};">${bookUrl}</a></p>` : `<p style="margin:0;font-size:14px;line-height:1.6;color:#333;">Book your free 30-minute intro call and paste <strong>${code}</strong> into the booking note. ${
 						discountPct
 							? `The price is already yours and holds until ${validUntil}; the call is where you and Marian check the fit before anything is invoiced.`
 							: `There is no discount to lock on ${esc(offerName)} — the call is simply where you and Marian check the fit before anything is invoiced.`
 					}${freeSessions ? " Marian confirms the free-sessions proposal on the call." : ""}</p>
-          <p style="margin:8px 0 0;font-size:14px;line-height:1.6;color:#333;">Direct link: <a href="${meta.booking_url}" style="color:${accent};">${meta.booking_url}</a></p>
+          <p style="margin:8px 0 0;font-size:14px;line-height:1.6;color:#333;">Direct link: <a href="${meta.booking_url}" style="color:${accent};">${meta.booking_url}</a></p>`}
         </td></tr>
       </table>
       <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:24px;">
         <tr><td>
-          <a href="${meta.booking_url}" style="display:inline-block;background-color:${accent};color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;padding:14px 26px;border-radius:999px;border:1px solid #b02064;">Book the intro call</a>
+          <a href="${bookUrl ?? meta.booking_url}" style="display:inline-block;background-color:${accent};color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;padding:14px 26px;border-radius:999px;border:1px solid #b02064;">${bookUrl ? "Book your first session" : "Book the intro call"}</a>
         </td></tr>
       </table>
-      <p style="margin:30px 0 4px;font-size:15px;line-height:1.65;color:#333;">Nothing here is a contract — the intro call is where we both check the fit. If it's not a fit, no hard feelings and no invoice.</p>
+      <p style="margin:30px 0 4px;font-size:15px;line-height:1.65;color:#333;">${bookUrl ? "If the first session does not work for you, rate it below 7/10 and it is free. If it is not working by session 2, we stop and the rest is on me." : "Nothing here is a contract — the intro call is where we both check the fit. If it's not a fit, no hard feelings and no invoice."}</p>
       <p style="margin:16px 0 0;font-size:15px;line-height:1.5;color:#171717;font-weight:600;">Marian Kamenistak</p>
       <p style="margin:0;font-size:13px;line-height:1.5;color:#888;">3,400+ sessions · 300+ leaders · 9.2/10 across 300+ reviews · <a href="https://www.marian.coach/?ref=offer-email" style="color:${accent};">marian.coach</a></p>
     </td></tr>

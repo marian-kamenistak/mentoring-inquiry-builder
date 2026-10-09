@@ -211,6 +211,10 @@ export function paymentTerms(audience: "individual" | "company", hasEuVatId = fa
 	return {
 		invoiced_by: meta.entity,
 		vat,
-		when: meta.first_session?.payment_terms ?? "Invoiced by Marian after the session is booked.",
+		// Company-paid (Marian, 2026-10-09): book first, the purchase order follows session 1.
+		when:
+			audience === "company"
+				? (meta.first_session as any)?.payment_terms_company ?? "Book now; the purchase order is collected after session 1 and the invoice goes against it."
+				: meta.first_session?.payment_terms ?? "Invoiced by Marian after the session is booked.",
 	};
 }

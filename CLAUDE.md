@@ -9,9 +9,11 @@ discount on every package, floor 296 EUR/session, prices computed server-side on
 Read-only REST at `/mcp/mentoring/api/openapi.json`. Receives Reclaim booking webhooks on **two**
 routes, one per scheduling link.
 
-**Two exits (2026-08-30).** Undecided → free intro (`book_intro_call`) → `intro arranged`.
-Agreed the price on an eligible package → paid first session (`book_first_session`) →
-`formal 1st arranged`, intro skipped. Eligibility is `meta.first_session.eligible_offers` in the
+**Two exits (2026-08-30; main ending flipped 2026-10-09).** Agreed the price on an eligible package →
+the first regular session (`book_first_session`) → `formal 1st arranged`, intro skipped: this is the
+MAIN ending; company-paid mentees book too and the purchase order follows session 1. Undecided →
+free intro (`book_intro_call`) → `intro arranged`, as the fallback. The wizard also asks the
+intro-call checklist (`src/core/onboarding.ts`), all optional, filed to Attio notes + person. Eligibility is `meta.first_session.eligible_offers` in the
 catalog, never a hardcoded offer id; `monthly`, `mentor-in-residence` and any deal carrying a
 free-sessions concession are excluded because the catalog says Marian settles those on a call.
 `check_booking` confirms from Attio rather than from what the visitor claims.

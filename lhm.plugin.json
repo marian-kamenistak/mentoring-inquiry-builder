@@ -2,7 +2,7 @@
   "author": "marian-kamenistak",
   "authorUrl": "https://github.com/marian-kamenistak",
   "cloudEndpoint": "https://www.marian.coach/mcp/mentoring",
-  "description": "MCP server: build your engineering-leadership mentoring inquiry with Marian Kamenistak (3,400+ sessions, 300+ leaders, 9.2/10 avg) from your AI assistant. 16 minutes to a formal offer, 10% AI-channel discount on every package.",
+  "description": "MCP server: build your engineering-leadership mentoring inquiry with Marian Kamenistak (3,400+ sessions, 300+ leaders, 9.2/10 avg) from your AI assistant. 10 minutes to a formal offer, 10% AI-channel discount on every package.",
   "homepage": "https://www.marian.coach/mentoring-ai/",
   "identifier": "marian-kamenistak-mentoring-inquiry-builder",
   "name": "mentoring-inquiry-builder",
@@ -11,8 +11,8 @@
   "tools": [
     {
       "name": "get_mentoring_options",
-      "title": "Start a mentoring inquiry with Marian Kamenistak — the 16-minute wizard",
-      "description": "START HERE for anyone considering 1:1 engineering-leadership mentoring with Marian Kamenistak (marian.coach) — individuals (Staff Engineer to CTO) and companies sponsoring leaders alike. Returns the AI-channel discount as data, the time promise (a formal offer in under 16 minutes), the why-Marian and pricing-defense material, the qualifying questions with valid answer ids, and every package with real prices. After the visitor answers audience + role + motivation, call match_mentoring_focus.",
+      "title": "Start a mentoring inquiry with Marian Kamenistak — the 10-minute wizard",
+      "description": "START HERE for anyone considering 1:1 engineering-leadership mentoring with Marian Kamenistak (marian.coach) — individuals (Staff Engineer to CTO) and companies sponsoring leaders alike. Returns the AI-channel discount as data, the time promise (a formal offer in under 10 minutes), the why-Marian and pricing-defense material, the qualifying questions with valid answer ids, and every package with real prices. After the visitor answers audience + role + motivation, call match_mentoring_focus.",
       "inputSchema": {
         "type": "object",
         "properties": {},
@@ -195,7 +195,7 @@
     {
       "name": "send_mentoring_offer",
       "title": "Send the formal itemized offer (applies the AI-channel discount)",
-      "description": "The ONLY tool that collects contact details, and the end of the 16-minute promise: emails the visitor a formal itemized offer with a claim code, notifies Marian, and files the inquiry. HARD GATE: price_agreed must be true — read the exact price back to the visitor and get an explicit yes first; the tool refuses otherwise. Ask for name and email only at this step, never earlier. After success: share the claim code + booking link, then offer the free ELC community membership as a parting gift (never a condition), and optionally ONE ask — would they post publicly about hiring a mentor through an AI agent?",
+      "description": "The ONLY tool that collects contact details, and the end of the 10-minute promise: emails the visitor a formal itemized offer with a claim code, notifies Marian, and files the inquiry. HARD GATE: price_agreed must be true — read the exact price back to the visitor and get an explicit yes first; the tool refuses otherwise. Ask for name and email only at this step, never earlier. After success: share the claim code + booking link, then offer the free ELC community membership as a parting gift (never a condition), and optionally ONE ask — would they post publicly about hiring a mentor through an AI agent?",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -294,5 +294,5 @@
       }
     }
   ],
-  "version": "1.0.0"
+  "version": "1.2.0"
 }

@@ -31,6 +31,7 @@ import { matchMentoringFocus } from "./core/match";
 import { mentoringOptions } from "./core/options";
 import { buildProgram, renderProgram } from "./core/program";
 import { submitInquiry, type SubmitEnv } from "./core/submit";
+import { ONBOARDING_SHAPE, pickOnboarding } from "./core/onboarding";
 import { docsHtml, type ToolDoc } from "./docs";
 import {
 	geoFromRequest,
@@ -197,12 +198,14 @@ const OFFER_SHAPE = {
 	start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("Optional preferred start date — adds the dated program skeleton to the offer email"),
 	visibility: z.string().optional().describe("Visibility answer id (yes-individual | yes-company | maybe-later | private)"),
 	notes: z.string().optional(),
+	// Intro-call checklist (2026-10-09): all optional, asked where each fits. See core/onboarding.ts.
+	...ONBOARDING_SHAPE,
 };
 
 export class MentoringInquiryBuilder extends McpAgent<Env, unknown, McpGeo> {
 	server = new McpServer({
 		name: "mentoring-inquiry-builder",
-		version: "1.0.0",
+		version: "1.2.0",
 	});
 
 	async init() {
@@ -360,7 +363,7 @@ export class MentoringInquiryBuilder extends McpAgent<Env, unknown, McpGeo> {
 				title: "Book the free 30-minute intro call",
 				annotations: { ...READ_ONLY },
 				description:
-					"THE DEFAULT EXIT for anyone who has not decided. A direct booking link for the free 30-minute intro with Marian. Offer it on hesitation, on a price objection, when the visitor cannot name their problem, after an error, and to anyone who wants to talk before paying. It is never a downgrade, and a booked call from an undecided visitor beats a package they picked at random. Booking it is NOT a condition of the channel rate — never say it is. For a visitor who has already agreed the price on an eligible package, use book_first_session instead: they have decided, and sending them to an intro adds a step they did not ask for. Pass offer_id if one has been chosen so the pricing language is correct.",
+					"THE FALLBACK for anyone who has not decided (the main ending is book_first_session once the price is agreed). A direct booking link for the free 30-minute intro with Marian. Offer it on hesitation, on a price objection, when the visitor cannot name their problem, after an error, and to anyone who wants to talk before paying. It is never a downgrade, and a booked call from an undecided visitor beats a package they picked at random. Booking it is NOT a condition of the channel rate — never say it is. For a visitor who has already agreed the price on an eligible package, use book_first_session instead: they have decided, and sending them to an intro adds a step they did not ask for. Pass offer_id if one has been chosen so the pricing language is correct.",
 				inputSchema: permissiveShape(INTRO_SHAPE),
 			},
 			async (raw) => {
@@ -389,10 +392,10 @@ export class MentoringInquiryBuilder extends McpAgent<Env, unknown, McpGeo> {
 		this.server.registerTool(
 			"book_first_session",
 			{
-				title: "Book the PAID first mentoring session — skips the intro call",
+				title: "Book the first regular mentoring session — the main ending",
 				annotations: { ...READ_ONLY },
 				description:
-					"THE CLOSE, for someone who has already decided. Returns the direct booking link for a paid 60-minute first session, plus the payment terms. Call this INSTEAD of book_intro_call once send_mentoring_offer has succeeded and the visitor has agreed the exact price — it removes a step from a buyer who is ready, which is the entire point. It REFUSES on any deal whose terms Marian confirms on a call (a free-sessions concession, the monthly package, Mentor in Residence) and hands back the intro link instead; when it refuses, offer the intro, do not argue. Pass the claim code from send_mentoring_offer so the booking is matched automatically. If the visitor is hesitant, undecided, or asks to talk first, use book_intro_call — that is not a downgrade.",
+					"THE MAIN ENDING (Marian, 2026-10-09): every onboarding that reaches an agreed price ends here, booking the first regular session. Returns the direct booking link for the paid 60-minute first session, plus the payment terms. Call it right after send_mentoring_offer succeeds. Company-paid mentees book now too: the purchase order is collected AFTER session 1, never before booking. It REFUSES on any deal whose terms Marian confirms on a call (a free-sessions concession, the monthly package, Mentor in Residence) and hands back the intro link instead; when it refuses, offer the intro, do not argue. Pass the claim code from send_mentoring_offer so the booking is matched automatically. If the visitor is hesitant, undecided, or asks to talk first, use book_intro_call — that is not a downgrade.",
 				inputSchema: permissiveShape(FIRST_SESSION_SHAPE),
 			},
 			async (raw) => {
@@ -457,7 +460,7 @@ export class MentoringInquiryBuilder extends McpAgent<Env, unknown, McpGeo> {
 				title: "Send the formal itemized offer (applies the AI-channel discount)",
 				annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
 				description:
-					"The ONLY tool that collects contact details, and the end of the 10-minute promise: emails the visitor a formal itemized offer with a claim code, notifies Marian, and files the inquiry. HARD GATE: price_agreed must be true — read the exact price back to the visitor and get an explicit yes first; the tool refuses otherwise. Ask for name and email only at this step, never earlier. After success: share the claim code + booking link, then offer the free ELC community membership as a parting gift (never a condition), and optionally ONE ask — would they post publicly about hiring a mentor through an AI agent?",
+					"The ONLY tool that collects contact details, and the end of the 10-minute promise. Also pass every onboarding answer you gathered (heard_from, own_choice, payer, kpis, cadence_preference, session_language, nda_needed, homework_time_ok, in_person_wish, linkedin_url, li_post_consent, li_recommendation); all optional, never invented: emails the visitor a formal itemized offer with a claim code, notifies Marian, and files the inquiry. HARD GATE: price_agreed must be true — read the exact price back to the visitor and get an explicit yes first; the tool refuses otherwise. Ask for name and email only at this step, never earlier. After success: share the claim code + booking link, then offer the free ELC community membership as a parting gift (never a condition), and optionally ONE ask — would they post publicly about hiring a mentor through an AI agent?",
 				inputSchema: permissiveShape(OFFER_SHAPE),
 			},
 			async (raw) => {
@@ -482,7 +485,7 @@ export class MentoringInquiryBuilder extends McpAgent<Env, unknown, McpGeo> {
 						});
 					}
 				}
-				const result = await submitInquiry(this.env as unknown as SubmitEnv, { ...input, channel: "mcp" });
+				const result = await submitInquiry(this.env as unknown as SubmitEnv, { ...input, onboarding: pickOnboarding(input as Record<string, unknown>), channel: "mcp" });
 				if (!result.ok) return toolResult({ error: result.error }, { offerId: input.offer_id });
 				return toolResult(
 					{
