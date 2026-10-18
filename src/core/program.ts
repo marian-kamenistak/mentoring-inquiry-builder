@@ -7,13 +7,13 @@
  * shifted off weekends (Sat -> Mon, Sun -> Mon). Dates are planning targets; the intro
  * call fixes the real cadence.
  */
-import { focusAreas, type Offer } from "./catalog";
+import { focusAreas, isManDay, manDayTerms, meta, type Offer, type ProgramMeta } from "./catalog";
 
 export type ProgramSession = {
 	n: number;
 	date: string; // YYYY-MM-DD
 	minutes: number;
-	kind: "session" | "checkpoint" | "closing-review";
+	kind: "session" | "checkpoint" | "closing-review" | "man-day";
 	label: string;
 	/** Planned theme from the catalog arc; absent when the package carries no arc. */
 	theme?: string;
@@ -52,6 +52,44 @@ function arcTheme(entry: string | undefined, focusIds: string[], openTheme: stri
 	return label ? `Your focus: ${label}` : openTheme;
 }
 
+/**
+ * Mentor in Residence (man-day retainer, 2026-10-18): one row per on-site day for the first
+ * month, not 24 dated sessions. One day a week → 4 rows a week apart; two days a week → 8 rows,
+ * two per week. What happens inside a day is settled on site, so no themes are assigned.
+ */
+function manDayProgram(offer: Offer, start: Date, startDate: string, p: ProgramMeta, leadersOpt?: number): Program {
+	const days = offer.man_days ?? 4;
+	const perWeek = Math.max(1, Math.round(days / 4));
+	const perDay = offer.sessions_per_md ?? meta.man_day?.sessions_per_day ?? 6;
+	const sessions: ProgramSession[] = [];
+	for (let i = 0; i < days; i++) {
+		const week = Math.floor(i / perWeek);
+		const slot = i % perWeek;
+		const date = skipWeekend(new Date(start.getTime() + (week * 7 + slot * 3) * DAY_MS));
+		sessions.push({
+			n: i + 1,
+			date: iso(date),
+			minutes: perDay * p.session_minutes,
+			kind: "man-day",
+			label: `On-site day ${i + 1} of ${days} this month — up to ${perDay} sessions, plus what sits between them (shadowing, exec readout, growth programs)`,
+		});
+	}
+	const leaders = Math.max(1, leadersOpt ?? 1);
+	const pool = offer.sessions ?? days * perDay;
+	const freeWeeks = meta.man_day?.free_weeks;
+	return {
+		offerId: offer.id,
+		startDate,
+		sessions,
+		asyncAccess: p.async_access === true,
+		continues: `One month shown (${days} on-site days, ${perWeek === 1 ? "one day" : `${perWeek} days`} a week). The retainer continues monthly until you cancel${freeWeeks ? `; the first ${freeWeeks} weeks are free and invoicing starts in week ${freeWeeks + 1}` : ""}. ${manDayTerms()}`,
+		...(leaders > 1
+			? { allocation: `Up to ${pool} sessions a month, a pool shared across ${leaders} leaders — roughly ${Math.floor(pool / leaders)} each. Who takes which slot is agreed on site; this skeleton deliberately does not assign them.` }
+			: {}),
+		caveat: "Dates are planning targets; the on-site weekday is agreed with you before the first day. Public holidays are not accounted for — check the dates against your own calendar.",
+	};
+}
+
 export function buildProgram(
 	offer: Offer,
 	startDate: string,
@@ -66,6 +104,7 @@ export function buildProgram(
 	if (startDate < today) return { error: `start_date "${startDate}" is in the past (today is ${today}) — ask the visitor for a real start date, or default to the next working Monday.` };
 	const p = offer.program;
 	if (!p) return { error: `offer "${offer.id}" has no program metadata` };
+	if (isManDay(offer)) return manDayProgram(offer, start, startDate, p, opts.leaders);
 
 	// Recurring SKUs: `sessions` is the count PER MONTH, so laying out `offer.sessions` and
 	// labelling them "of 2" told a subscription buyer her engagement ended in a fortnight.

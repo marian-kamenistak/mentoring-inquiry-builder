@@ -73,8 +73,8 @@ export type Eligibility = { eligible: true } | { eligible: false; reason: string
  *   - `monthly` — "Marian confirms the billing day on the intro call" (catalog.yaml:220)
  *   - a proposed free-sessions concession — "Proposal only. Marian confirms final terms on the
  *     intro call" (catalog.yaml:123), and the effective-rate disclosure at :132
- * `mentor-in-residence` is excluded by omission from `eligible_offers`: it is itself a listed
- * negotiation trigger, so it is never a clean self-serve close.
+ * `mentor-in-residence` is excluded by omission from `eligible_offers`: a man-day retainer whose
+ * on-site weekday and start Marian agrees on a call (2026-10-18), never a clean self-serve close.
  */
 export function firstSessionEligible(offerId: string, opts: { freeSessionsProposed?: number } = {}): Eligibility {
 	const offer = offerById(offerId);

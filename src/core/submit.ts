@@ -21,8 +21,10 @@ import {
 	effectiveRate,
 	eur,
 	focusAreaById,
+	isManDay,
 	isPerLeader,
 	leaderMultiplier,
+	manDayTerms,
 	meta,
 	motivationById,
 	multiLeaderError,
@@ -248,7 +250,12 @@ export async function submitInquiry(env: SubmitEnv, input: SubmitInput): Promise
 	if (offer.commitment) priceLines.push(`Commitment: ${offer.commitment.terms}`);
 	{ const v = vatFor(audience, finalPrice); if (v) priceLines.push(`VAT: ${v.display}`); }
 	// Packages add free sessions, not a lower rate (2026-08-30) — the breakdown rides with the count.
-	priceLines.push(`Sessions: ${sessionsTotal} (${sessionsBreakdown(offer)}${multi > 1 ? ` per leader × ${leaders}` : ""})${!isPerLeader(offer) && leaders > 1 ? ` (pooled across ${leaders} leaders)` : ""} — ${eur(offer.per_session ?? offer.price)} per paid session at list, effective ${eur(rate.perSession)}/session`);
+	if (isManDay(offer)) {
+		// Man-day SKU (2026-10-18): days, not session arithmetic.
+		priceLines.push(`Scope: ${sessionsBreakdown(offer)}; up to ${sessionsTotal} sessions a month${leaders > 1 ? ` shared across ${leaders} leaders` : ""}. ${manDayTerms()}`);
+	} else {
+		priceLines.push(`Sessions: ${sessionsTotal} (${sessionsBreakdown(offer)}${multi > 1 ? ` per leader × ${leaders}` : ""})${!isPerLeader(offer) && leaders > 1 ? ` (pooled across ${leaders} leaders)` : ""} — ${eur(offer.per_session ?? offer.price)} per paid session at list, effective ${eur(rate.perSession)}/session`);
+	}
 	if (freeSessions > 0) {
 		priceLines.push(`B2B concession proposed: +${freeSessions} free sessions (Marian confirms on the intro call) → effective ${eur(rate.perSession)}/session`);
 	}
@@ -571,7 +578,11 @@ export function offerEmailHtml(args: {
 	const unit = offer.unit === "per_month" ? " / month" : offer.unit === "per_quarter" ? " / quarter" : offer.unit === "per_session" ? " / session" : "";
 
 	const headlinePrice = `<p style="margin:0 0 6px;font-size:40px;line-height:1.05;font-weight:700;letter-spacing:-0.02em;color:#171717;">${eur(finalPrice)}<span style="font-size:14px;font-weight:500;color:#888;">${unit} excl. VAT</span></p>
-     <p style="margin:0 0 24px;font-size:13px;color:#888;">${sessions} sessions, ${sessionsBreakdown(offer)}${leaders > 1 && isPerLeader(offer) ? " per leader" : ""} — ${eur(effectivePerSession)} a session. The published price, the same as on marian.coach; the offer holds until the date below.</p>`;
+     <p style="margin:0 0 24px;font-size:13px;color:#888;">${
+				isManDay(offer)
+					? `${sessionsBreakdown(offer)}. First ${meta.man_day?.free_weeks ?? 8} weeks free, invoiced monthly in arrears.`
+					: `${sessions} sessions, ${sessionsBreakdown(offer)}${leaders > 1 && isPerLeader(offer) ? " per leader" : ""} — ${eur(effectivePerSession)} a session.`
+			} The published price, the same as on marian.coach; the offer holds until the date below.</p>`;
 
 	const programHtml = program
 		? `<tr><td colspan="2" style="padding:18px 0 4px;font-size:12px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:${accent};">Program skeleton (planning targets)</td></tr>
@@ -602,17 +613,23 @@ export function offerEmailHtml(args: {
       <p style="margin:0 0 2px;font-size:12px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:${accent};">${offerName}${leaders > 1 ? ` × ${leaders} leaders` : ""}</p>
       ${headlinePrice}
       <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-        <tr><td style="${rowStyle}">Sessions</td><td align="right" style="${rowStyle}">${sessions} × ${offer.program?.session_minutes ?? 60} min${
-					leaders > 1
-						? isPerLeader(offer)
-							? ` (${offer.sessions} per leader × ${leaders} leaders)`
-							: ` — a pool shared across ${leaders} leaders, not ${offer.sessions} each`
-						: offer.commitment?.sessions_are === "per_month"
-							? " per month"
-							: ""
-				}</td></tr>
+        ${
+					isManDay(offer)
+						? `<tr><td style="${rowStyle}">On-site days</td><td align="right" style="${rowStyle}">${offer.man_days} a month, up to ${offer.sessions_per_md} sessions each${leaders > 1 ? ` — up to ${sessions} sessions a month shared across ${leaders} leaders` : ""}</td></tr>
+        <tr><td style="${rowStyle}">Rate</td><td align="right" style="${rowStyle}">${eur(offer.rate_per_md ?? 0)} / man-day (${eur(finalPrice)} ÷ ${offer.man_days} days)</td></tr>
+        <tr><td style="${rowStyle}">Free weeks</td><td align="right" style="${rowStyle}">${esc(meta.man_day?.free_weeks_rule ?? "")}</td></tr>`
+						: `<tr><td style="${rowStyle}">Sessions</td><td align="right" style="${rowStyle}">${sessions} × ${offer.program?.session_minutes ?? 60} min${
+								leaders > 1
+									? isPerLeader(offer)
+										? ` (${offer.sessions} per leader × ${leaders} leaders)`
+										: ` — a pool shared across ${leaders} leaders, not ${offer.sessions} each`
+									: offer.commitment?.sessions_are === "per_month"
+										? " per month"
+										: ""
+							}</td></tr>
         <tr><td style="${rowStyle}">Package</td><td align="right" style="${rowStyle}">${sessionsBreakdown(offer)}${leaders > 1 && isPerLeader(offer) ? " per leader" : ""} · ${eur(offer.per_session ?? offer.price)} per paid session at list</td></tr>
-        <tr><td style="${rowStyle}">Rate</td><td align="right" style="${rowStyle}">${eur(effectivePerSession)} / session${freeSessions ? ` (${eur(finalPrice)} ÷ ${sessions + freeSessions} sessions, incl. the ${freeSessions} free proposed)` : ` (${eur(finalPrice)} ÷ ${sessions} sessions)`}</td></tr>
+        <tr><td style="${rowStyle}">Rate</td><td align="right" style="${rowStyle}">${eur(effectivePerSession)} / session${freeSessions ? ` (${eur(finalPrice)} ÷ ${sessions + freeSessions} sessions, incl. the ${freeSessions} free proposed)` : ` (${eur(finalPrice)} ÷ ${sessions} sessions)`}</td></tr>`
+				}
         ${offer.commitment ? `<tr><td style="${rowStyle}">Commitment</td><td align="right" style="${rowStyle}">${esc(offer.commitment.terms)}</td></tr>` : ""}
         <tr><td style="${rowStyle}">Focus</td><td align="right" style="${rowStyle}">${focus.map(esc).join("<br>")}</td></tr>
         <tr><td style="${rowStyle}">Your definition of success</td><td align="right" style="${rowStyle}">${esc(successDef)}</td></tr>

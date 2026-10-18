@@ -12,6 +12,7 @@ import {
 	effectiveRate,
 	focusAreaById,
 	focusAreas,
+	isManDay,
 	sessionShare,
 	eur,
 	floorPerSession,
@@ -82,7 +83,8 @@ describe("CTA: every response can convert a lead into a booked call (Marian, 202
 describe("unit integrity: recurring SKUs must not read as one-off totals (Sofia, Ravi, Petra, Jonas)", () => {
 	it("price display carries the unit for every package", () => {
 		expect(priceDisplay(offerById("monthly")!, 790)).toBe("€790 / month, excl. VAT");
-		expect(priceDisplay(offerById("mentor-in-residence")!, 5925)).toBe("€5,925 / quarter, excl. VAT");
+		// Man-day retainer since 2026-10-18: a monthly figure, no longer a quarter.
+		expect(priceDisplay(offerById("mentor-in-residence")!, 4000)).toBe("€4,000 / month, excl. VAT");
 		expect(priceDisplay(offerById("single-session")!, 395)).toBe("€395 / session, excl. VAT");
 		expect(priceDisplay(offerById("first-quarter")!, 1975)).toBe("€1,975, excl. VAT");
 	});
@@ -118,10 +120,11 @@ describe("multi-leader arithmetic (Jonas, Lena, Ravi, Petra)", () => {
 	it("a pooled SKU never multiplies its sessions by the leader count", () => {
 		// The worst artifact the system could produce: an itemized offer promising 72 sessions
 		// (or 900, at 50 leaders) for a flat €6,498 — €90/session against a €361 floor.
+		// Since 2026-10-18 the pool is what a month of man-days holds: 4 days x up to 6 = 24.
 		const mir = offerById("mentor-in-residence")!;
-		expect(sessionsDelivered(mir, 1)).toBe(18);
-		expect(sessionsDelivered(mir, 5)).toBe(18);
-		expect(sessionsDelivered(mir, 50)).toBe(18);
+		expect(sessionsDelivered(mir, 1)).toBe(24);
+		expect(sessionsDelivered(mir, 5)).toBe(24);
+		expect(sessionsDelivered(mir, 50)).toBe(24);
 	});
 
 	it("a per-leader SKU multiplies both price and sessions", () => {
@@ -165,29 +168,36 @@ describe("multi-leader arithmetic (Jonas, Lena, Ravi, Petra)", () => {
 
 describe("the charged-rate floor is computed, not merely asserted (Jonas, Lena, Ravi)", () => {
 	it("reports a breach when free sessions push the rate under the floor", () => {
-		const mir = offerById("mentor-in-residence")!;
-		expect(effectiveRate(mir.price, mir, 3, 0).breachesFloor).toBe(false);
-		expect(effectiveRate(mir.price, mir, 3, 0).perSession).toBe(395);
-		// Since the 2026-09-12 reprice the floor checks the session share only — the 3,222 retainer
-		// is a named line, not session money (Marian, 2026-10-08). List: 7,110 over 18 sessions.
-		// Floor 329 (2026-10-18): +2 free stays above it (355.50); +4 and +8 break it and must be
-		// flagged to Marian.
-		expect(effectiveRate(mir.price, mir, 3, 2).breachesFloor).toBe(false);
-		for (const free of [4, 8]) {
-			const r = effectiveRate(mir.price, mir, 3, free);
+		// Floor 329 (2026-10-18) on the per-leader quarter: 3 x 1,975 over 18 sessions is 329.17;
+		// the first rung of the ladder (+2) already breaks it and must be flagged to Marian.
+		const fq = offerById("first-quarter")!;
+		expect(effectiveRate(3 * fq.price, fq, 3, 0).breachesFloor).toBe(false);
+		expect(effectiveRate(3 * fq.price, fq, 3, 0).perSession).toBeCloseTo(329.17, 1);
+		for (const free of [2, 4, 8]) {
+			const r = effectiveRate(3 * fq.price, fq, 3, free);
 			expect(r.breachesFloor).toBe(true);
 			expect(r.perSession).toBeLessThan(floorPerSession());
 		}
-		// Counting the retainer as session money hid every breach: 10,332 / 26 reads as 397.38.
-		expect(effectiveRate(mir.price, mir, 3, 8).perSession).toBeCloseTo(273.46, 1);
 	});
 
-	it("the brief always publishes the effective rate and a floor verdict", () => {
+	it("a man-day SKU is exempt from the session floor and says so (Marian 2026-10-18)", () => {
+		// Mentor in Residence buys a day (up to 6 sessions plus everything between them), not
+		// sessions: 4,000 / 24 reads as 167 and that is NOT a floor breach.
+		const mir = offerById("mentor-in-residence")!;
+		expect(isManDay(mir)).toBe(true);
+		expect(effectiveRate(mir.price, mir, 3, 0).breachesFloor).toBe(false);
 		const b = composeBrief({ ...BASE, audience: "company", offer_id: "mentor-in-residence", leaders_count: 3 });
 		expect(b.ok).toBe(true);
 		if (!b.ok) return;
-		expect(b.brief.floor_check.effective_per_session_eur).toBe(395);
-		expect(b.brief.floor_check.status).toBe("at_or_above_floor");
+		expect(b.brief.floor_check.status).toBe("exempt_man_day");
+		expect((b.brief.floor_check as any).basis).toMatch(/man-day/i);
+		const o = b.brief.offer as any;
+		expect(o.man_days_per_month).toBe(4);
+		expect(o.rate_per_man_day_eur).toBe(1000);
+		expect(o.free_weeks).toBe(8);
+		expect(o.man_day_terms).toContain("first 8 weeks free");
+		expect(o.man_day_terms).toContain("1,000 EUR per man-day");
+		expect(o.paid_sessions).toBeUndefined();
 	});
 });
 
@@ -271,7 +281,8 @@ describe("the claim code names the campaign that actually applied (Tomáš, Sofi
 			expect(r.claimCode.startsWith("MC-")).toBe(true);
 			expect(r.finalPrice).toBe(r.listPrice);
 			// The per-session figure is the list rate's session share, never below the floor.
-			// Session share only: a residence retainer is a named line on top, not session money.
+			// Man-day SKUs (Mentor in Residence, 2026-10-18) are priced per day and exempt from it.
+			if (isManDay(offerById(id)!)) continue;
 			const perSession = sessionShare(offerById(id)!, r.finalPrice) / r.sessionsTotal;
 			expect(perSession).toBeGreaterThanOrEqual(floorPerSession());
 		}
@@ -377,12 +388,25 @@ describe("the program skeleton describes what was bought (Sofia, Klára, Jonas, 
 		expect(r.sessions.at(-1)!.label).not.toContain("of 2");
 	});
 
-	it("a pooled company package says the sessions are shared, not per head", () => {
+	it("a man-day company package plans on-site days, not 24 dated sessions, and says the pool is shared", () => {
+		// Mentor in Residence (2026-10-18): one row per man-day for the first month, weekly cadence.
 		const r = buildProgram(offerById("mentor-in-residence")!, "2026-10-01", { today: "2026-08-21", leaders: 5 });
 		expect("error" in r).toBe(false);
 		if ("error" in r) return;
-		expect(r.sessions.length).toBe(18);
+		expect(r.sessions.length).toBe(4);
+		expect(r.sessions.every((s) => s.kind === "man-day")).toBe(true);
+		for (let i = 1; i < r.sessions.length; i++) {
+			const gap = (Date.parse(r.sessions[i].date) - Date.parse(r.sessions[i - 1].date)) / 86400000;
+			expect(gap).toBeGreaterThanOrEqual(5);
+			expect(gap).toBeLessThanOrEqual(9);
+		}
 		expect(r.allocation).toContain("shared across 5 leaders");
+		expect(r.continues).toContain("first 8 weeks are free");
+		expect(r.continues).toContain("1,000 EUR per man-day");
+		// Two days a week: 8 rows in the month.
+		const two = buildProgram(offerById("mentor-in-residence-2day")!, "2026-10-01", { today: "2026-08-21" });
+		if ("error" in two) throw new Error(two.error);
+		expect(two.sessions.length).toBe(8);
 	});
 });
 
@@ -581,12 +605,13 @@ describe("DECISION: one list rate, free sessions in the package, no discount (20
 		// and (since 2026-10-18) no channel discount at all.
 		const rates = new Set(offers.map((o) => o.per_session));
 		expect([...rates]).toEqual([listRate()]);
-		for (const o of offers) expect(sessionShare(o, o.price) / (o.sessions ?? 1)).toBeGreaterThanOrEqual(floorPerSession());
+		// Man-day SKUs are priced per day and exempt from the session floor (2026-10-18).
+		for (const o of offers.filter((x) => !isManDay(x))) expect(sessionShare(o, o.price) / (o.sessions ?? 1)).toBeGreaterThanOrEqual(floorPerSession());
 		// List prices match what marian.coach and the skill publish (SCHEMA v2026.09).
 		expect(offerById("single-session")!.price).toBe(395);
 		expect(offerById("first-quarter")!.price).toBe(1975);
 		expect(offerById("monthly")!.price).toBe(790);
-		expect(offerById("mentor-in-residence")!.price).toBe(10332); // repriced 2026-09-12
+		expect(offerById("mentor-in-residence")!.price).toBe(4000); // 4 man-days x 1,000 / month, 2026-10-18
 	});
 
 	it("a company pays exactly what an individual pays, per session", () => {

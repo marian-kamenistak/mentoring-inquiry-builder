@@ -9,6 +9,7 @@ import {
 	negotiationFor,
 	offerById,
 	offers,
+	priceDisplay,
 	routing,
 	slotsOpen,
 } from "../src/core/catalog";
@@ -49,10 +50,15 @@ describe("catalog pricing", () => {
 		expect(floorPerSession()).toBe(meta.negotiation.floor_eur_per_session);
 		for (const o of offers) {
 			expect(o.per_session).toBe(listRate());
-			// Company residence SKUs add a named retainer on top; the session rate itself never moves
-			// (decisions/2026-09-12-mir-reprice-retainer.md).
-			expect(o.price).toBe(((o.sessions ?? 1) - (o.free_sessions ?? 0)) * listRate() + (o.retainer ?? 0));
-			expect((o.price - (o.retainer ?? 0)) / (o.sessions ?? 1)).toBeGreaterThanOrEqual(floorPerSession());
+			// Mentor in Residence (2026-10-18) is a MAN-DAY retainer: price = man-days x rate per
+			// man-day, per month. It buys days, not sessions, so the session floor does not apply.
+			if (o.pricing_model === "man_day") {
+				expect(o.price).toBe(o.man_days! * o.rate_per_md!);
+				expect(o.unit).toBe("per_month");
+				continue;
+			}
+			expect(o.price).toBe(((o.sessions ?? 1) - (o.free_sessions ?? 0)) * listRate());
+			expect(o.price / (o.sessions ?? 1)).toBeGreaterThanOrEqual(floorPerSession());
 		}
 	});
 });
@@ -76,7 +82,9 @@ describe("B2B negotiation gating", () => {
 
 	it("3+ leaders unlock the progression, capped at max", () => {
 		expect(negotiationFor("company", 3, "first-quarter")).not.toBeNull();
-		expect(negotiationFor("company", 3, "mentor-in-residence")).not.toBeNull();
+		// Since 2026-10-18 Mentor in Residence is a man-day retainer: no free-session ladder on it
+		// at ANY leader count — the 8 free weeks are its concession.
+		expect(negotiationFor("company", 3, "mentor-in-residence")).toBeNull();
 		expect(clampConcession("company", 3, "first-quarter", 2).granted).toBe(2);
 		expect(clampConcession("company", 3, "first-quarter", 8).granted).toBe(8);
 		expect(meta.negotiation.max_free_sessions).toBe(8);
@@ -175,8 +183,9 @@ describe("guardrails + options carry the magnet", () => {
 		expect(offers.find((o) => o.id === "single-session")!.price).toBe(395);
 		expect(offers.find((o) => o.id === "first-quarter")!.price).toBe(1975);
 		expect(offers.find((o) => o.id === "monthly")!.price).toBe(790);
-		// 18 × 395 + 3,222 retainer, repriced 2026-09-12 (was 5,925).
-		expect(offers.find((o) => o.id === "mentor-in-residence")!.price).toBe(10332);
+		// 4 man-days x 1,000 EUR per month (man-day model, Marian 2026-10-18; was 10,332 / quarter).
+		expect(offers.find((o) => o.id === "mentor-in-residence")!.price).toBe(4000);
+		expect(offers.find((o) => o.id === "mentor-in-residence-2day")!.price).toBe(8000);
 	});
 
 	it("what a client PAYS through the wizard is the list price on every package, every channel", async () => {
@@ -203,6 +212,60 @@ describe("guardrails + options carry the magnet", () => {
 				}
 			}
 		}
+	});
+});
+
+describe("Mentor in Residence is a man-day retainer (Marian 2026-10-18)", () => {
+	const mir = offerById("mentor-in-residence")!;
+	const company = {
+		audience: "company" as const,
+		role_band: "cto-founder",
+		motivation: "company-sponsored",
+		focus_area_ids: ["scaling-org"],
+		success_definition: "the bench stops escalating to the CTO",
+		offer_id: "mentor-in-residence",
+		leaders_count: 5,
+	};
+
+	it("never gets a free-session concession, whatever the leader count — the free weeks are the concession", () => {
+		for (const n of [1, 3, 5, 10, 50]) {
+			expect(negotiationFor("company", n, "mentor-in-residence")).toBeNull();
+			expect(negotiationFor("company", n, "mentor-in-residence-2day")).toBeNull();
+		}
+		const r = clampConcession("company", 5, "mentor-in-residence", 4);
+		expect(r.granted).toBe(0);
+		expect(r.rejected).toMatch(/man-day/);
+		expect(r.rejected).toContain(`${meta.man_day!.free_weeks} weeks free`);
+	});
+
+	it("prints a monthly price, and the brief carries the man-day terms instead of session arithmetic", () => {
+		expect(priceDisplay(mir, mir.price)).toBe("€4,000 / month, excl. VAT");
+		expect(priceDisplay(offerById("mentor-in-residence-2day")!, 8000)).toBe("€8,000 / month, excl. VAT");
+		const b = composeBrief(company);
+		expect(b.ok).toBe(true);
+		if (!b.ok) return;
+		const text = JSON.stringify(b.brief);
+		expect(text).toContain("8 weeks free");
+		expect(text).toContain("1,000");
+		expect(text).toContain("4 man-days a month (up to 6 sessions a day), 1,000 EUR per man-day");
+		expect(b.brief.offer.list_price).toBe(4000); // flat: 5 leaders do not multiply it
+		expect(b.brief.offer.sessions_breakdown).not.toMatch(/\d+ paid/);
+		expect(b.brief.floor_check.status).toBe("exempt_man_day");
+		expect((b.brief as any).b2b_concession_available).toBeNull();
+		expect((b.brief as any).note).toMatch(/weeks free/);
+	});
+
+	it("guardrails and the options payload state the man-day exception next to the one list rate", () => {
+		const g = guardrailLines("mentor-in-residence").join(" ");
+		expect(g).toContain(`ONE LIST RATE: ${eur(listRate())}`);
+		expect(g).toContain("1,000 EUR per man-day");
+		expect(g).toContain("first 8 weeks free");
+		const o = mentoringOptions() as any;
+		const row = o.offers.find((x: any) => x.id === "mentor-in-residence");
+		expect(row.price_display).toBe("€4,000 / month, excl. VAT");
+		expect(row.per_session_eur).toBeUndefined();
+		expect(row.man_day_terms).toContain("1,000 EUR per man-day");
+		expect(o.b2b_negotiation.mentor_in_residence).toContain("No free-session ladder");
 	});
 });
 

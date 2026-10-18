@@ -8,6 +8,7 @@
  */
 import {
 	focusAreaById,
+	isManDay,
 	matchFocus,
 	motivationById,
 	motivations,
@@ -84,7 +85,7 @@ export function matchMentoringFocus(
 				name: offer.name,
 				price: offer.price,
 				price_display: priceDisplay(offer, offer.price),
-				sessions: `${offer.sessions ?? 1} sessions, ${sessionsBreakdown(offer)}`,
+				sessions: isManDay(offer) ? `${sessionsBreakdown(offer)}; up to ${offer.sessions} sessions a month` : `${offer.sessions ?? 1} sessions, ${sessionsBreakdown(offer)}`,
 				...(opts.audience === "company" && offer.id === routing.company_offer
 					? { why: `Recommended because this is a company sponsoring ${opts.leaders_count ?? routing.company_offer_min_leaders}+ leaders. Also price the per-leader alternative (${routing.default_offer}) so they can compare — do not present this as the only option.` }
 					: {}),

@@ -52,6 +52,14 @@ export type Offer = {
 	per_session?: number;
 	/** List price ÷ all sessions incl. the free ones — 329 on the quarter. */
 	effective_per_session?: number;
+	/** Mentor in Residence since 2026-10-18: a MAN-DAY retainer, not a session bundle. `price` =
+	 *  man_days × rate_per_md per month; `sessions` is the pool a month holds (man_days ×
+	 *  sessions_per_md); `per_session` is the reference list rate only. Exempt from the session floor. */
+	pricing_model?: "man_day";
+	man_days?: number;
+	rate_per_md?: number;
+	sessions_per_md?: number;
+	floor_exempt_basis?: string;
 	public?: string;
 	duration_months?: number;
 	installments?: { count: number; eur: number };
@@ -107,6 +115,17 @@ type Catalog = {
 			/** Availability only — how many parallel 1:1s Marian has room for. Never a price term. */
 			slots: { open: number; cap: number; proof: string; rule: string; as_of?: string };
 		negotiation: Negotiation;
+		/** Shared Mentor in Residence terms (2026-10-18). Optional so an older generated catalog still type-checks. */
+		man_day?: {
+			rate_eur: number;
+			sessions_per_day: number;
+			max_days_per_week: number;
+			free_weeks: number;
+			free_weeks_rule: string;
+			credit_rule: string;
+			cancel: string;
+			why: string;
+		};
 		cross_sell: { id: string; name: string; url: string; when: string; pitch: string; items: string[] };
 	};
 	offers: Offer[];
@@ -177,7 +196,27 @@ export const sessionsDelivered = (offer: Offer, leaders: number): number => (off
 export function multiLeaderError(offer: Offer, leaders: number): string | null {
 	if (leaders <= 1 || offer.multi_leader !== false) return null;
 	const fq = offerById("first-quarter");
-	return `"${offer.id}" is a single-person package and has no multi-leader price — ${leaders} leaders cannot be quoted on it. For ${leaders} sponsored leaders use "${fq?.id ?? "first-quarter"}" (priced per leader) or "mentor-in-residence" (a flat quarterly pool).`;
+	return `"${offer.id}" is a single-person package and has no multi-leader price — ${leaders} leaders cannot be quoted on it. For ${leaders} sponsored leaders use "${fq?.id ?? "first-quarter"}" (priced per leader) or "mentor-in-residence" (a flat monthly man-day retainer).`;
+}
+
+/** Mentor in Residence (2026-10-18) is priced per man-day, not per session. */
+export const isManDay = (offer: Offer): boolean => offer.pricing_model === "man_day";
+
+/** "4 man-days a month (up to 6 sessions a day), 1,000 EUR per man-day" — what a man-day SKU
+ *  contains, in place of the "24 paid" session arithmetic that does not describe it. */
+export function manDayBreakdown(offer: Offer): string {
+	const md = meta.man_day;
+	const days = offer.man_days ?? 0;
+	const perDay = offer.sessions_per_md ?? md?.sessions_per_day ?? 0;
+	const rate = offer.rate_per_md ?? md?.rate_eur ?? 0;
+	return `${days} man-days a month (up to ${perDay} sessions a day), ${rate.toLocaleString("en-US")} EUR per man-day`;
+}
+
+/** The one buyer-facing sentence for Mentor in Residence, read from meta.man_day. */
+export function manDayTerms(): string {
+	const md = meta.man_day;
+	if (!md) return "";
+	return `Mentor in Residence: Marian inside your company one or two days a week, ${md.rate_eur.toLocaleString("en-US")} EUR per man-day, invoiced monthly, first ${md.free_weeks} weeks free, only sessions rated ${meta.guarantee.threshold}+/${meta.guarantee.scale} charged, cancel any time.`;
 }
 
 /** The rate floor the terms promise. */
@@ -195,6 +234,7 @@ export const sessionShare = (offer: Offer, price: number): number =>
 
 /** "5 paid + 1 free" / "1 paid". Free sessions are part of the package, never a discount. */
 export function sessionsBreakdown(offer: Offer): string {
+	if (isManDay(offer)) return manDayBreakdown(offer);
 	const total = offer.sessions ?? 1;
 	const free = offer.free_sessions ?? 0;
 	return free > 0 ? `${total - free} paid + ${free} free` : `${total} paid`;
@@ -258,13 +298,16 @@ export function effectiveRate(
 	// concession never tripped the floor, while the session money alone was at 246.
 	const money = sessionShare(offer, finalPrice);
 	const perSession = sessions > 0 ? Math.round((money / sessions) * 100) / 100 : money;
-	return { perSession, sessions, floor, breachesFloor: floor > 0 && perSession < floor };
+	// A man-day SKU is exempt: the floor governs the charged SESSION rate on session bundles,
+	// and a man-day buys a day, not sessions (offer.floor_exempt_basis, 2026-10-18).
+	return { perSession, sessions, floor, breachesFloor: !isManDay(offer) && floor > 0 && perSession < floor };
 }
 
 /**
  * B2B concession check. The ONLY thing the agent may concede, and only as a PROPOSAL —
- * Marian confirms on the intro call. Null unless: company audience AND (>= 3 sponsored
- * leaders on quarterly packs OR mentor-in-residence). The rate itself never moves.
+ * Marian confirms on the intro call. Null unless: company audience AND >= 3 sponsored
+ * leaders on quarterly packs. The rate itself never moves. Man-day SKUs (Mentor in Residence
+ * since 2026-10-18) never get a free-session ladder: their B2B concession is the free weeks.
  */
 export function negotiationFor(
 	audience: string,
@@ -278,7 +321,8 @@ export function negotiationFor(
 	// "Never on single-leader deals" is in the rule text but was not in the condition, so a
 	// 1-leader Mentor-in-Residence brief shipped the full 8-session concession block with
 	// "Never on single-leader deals" printed three fields below "leaders_count": 1.
-	const bigDeal = (offer.id === "mentor-in-residence" || offer.id === "first-quarter") && leadersCount >= 3;
+	if (isManDay(offer)) return null;
+	const bigDeal = offer.id === "first-quarter" && leadersCount >= 3;
 	if (!bigDeal) return null;
 	return { maxFreeSessions: n.max_free_sessions, progression: n.progression, rule: n.rule };
 }
@@ -299,6 +343,13 @@ export function clampConcession(
 	if (!requested) return { granted: 0, rejected: null };
 	const n = negotiationFor(audience, leadersCount, offerId);
 	if (!n) {
+		const offer = offerById(offerId);
+		if (offer && isManDay(offer)) {
+			return {
+				granted: 0,
+				rejected: `Free sessions were requested (${requested}) but ${offer.name} is priced per man-day; its B2B concession is the first ${meta.man_day?.free_weeks ?? 8} weeks free, already in the terms. There is no free-session ladder on it. Nothing was applied.`,
+			};
+		}
 		return {
 			granted: 0,
 			rejected: `Free sessions were requested (${requested}) but this deal does not qualify. The concession needs: ${meta.negotiation.triggers.join(" or ")}. Nothing was applied — say so rather than implying a concession is in the offer.`,

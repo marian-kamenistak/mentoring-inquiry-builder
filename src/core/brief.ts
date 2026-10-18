@@ -9,8 +9,10 @@ import {
 	eur,
 	focusAreaById,
 	focusAreas,
+	isManDay,
 	isPerLeader,
 	leaderMultiplier,
+	manDayTerms,
 	meta,
 	motivationById,
 	multiLeaderError,
@@ -127,7 +129,9 @@ export function composeBrief(input: BriefInput) {
 				name: offer!.name,
 				unit: offer!.unit ?? "per_engagement",
 				sessions: sessionsTotal,
-				sessions_display: `${sessionsTotal} × ${offer!.program?.session_minutes ?? 60} min${
+				sessions_display: isManDay(offer!)
+					? `up to ${sessionsTotal} sessions a month (${offer!.man_days} man-days × up to ${offer!.sessions_per_md} a day)${leaders > 1 ? ` — a pool shared across ${leaders} leaders, NOT ${sessionsTotal} each` : ""}`
+					: `${sessionsTotal} × ${offer!.program?.session_minutes ?? 60} min${
 					isPerLeader(offer!) && leaders > 1
 						? ` (${offer!.sessions} per leader × ${leaders} leaders)`
 						: !isPerLeader(offer!) && leaders > 1
@@ -140,10 +144,23 @@ export function composeBrief(input: BriefInput) {
 				// Packages add FREE sessions, not a lower rate (2026-08-30). Stated as data so the
 				// offer shows "5 paid + 1 free" and nobody calls the free session a discount.
 				sessions_breakdown: sessionsBreakdown(offer!),
-				paid_sessions: ((offer!.sessions ?? 1) - (offer!.free_sessions ?? 0)) * mult,
-				free_sessions_included: (offer!.free_sessions ?? 0) * mult,
-				list_rate_per_session_eur: offer!.per_session,
-				...(offer!.effective_per_session !== undefined ? { list_effective_per_session_eur: offer!.effective_per_session } : {}),
+				// A man-day SKU (2026-10-18) carries its day terms instead of session arithmetic:
+				// "24 paid, 0 free, 167 a session" describes nothing the buyer is buying.
+				...(isManDay(offer!)
+					? {
+							pricing_model: "man_day" as const,
+							man_days_per_month: offer!.man_days,
+							rate_per_man_day_eur: offer!.rate_per_md,
+							sessions_per_man_day: offer!.sessions_per_md,
+							man_day_terms: manDayTerms(),
+							...(meta.man_day ? { free_weeks: meta.man_day.free_weeks, credit_rule: meta.man_day.credit_rule } : {}),
+						}
+					: {
+							paid_sessions: ((offer!.sessions ?? 1) - (offer!.free_sessions ?? 0)) * mult,
+							free_sessions_included: (offer!.free_sessions ?? 0) * mult,
+							list_rate_per_session_eur: offer!.per_session,
+							...(offer!.effective_per_session !== undefined ? { list_effective_per_session_eur: offer!.effective_per_session } : {}),
+						}),
 				// Commitment terms existed only as six words of prose inside `value` and reached
 				// neither the offer nor the email — the one contractual fact a subscription buyer
 				// needs was the one thing the "formal itemized offer" omitted.
@@ -152,7 +169,7 @@ export function composeBrief(input: BriefInput) {
 				// priceDisplay carries the unit ("/ month", "/ quarter", "/ session"), which every
 				// downstream surface used to strip — turning recurring SKUs into one-off totals.
 				list_price_display: `${priceDisplay(offer!, listTotal)}${isPerLeader(offer!) && leaders > 1 ? ` (${leaders} leaders × ${eur(offer!.price)})` : ""}`,
-				effective_per_session_eur: rate.perSession,
+				...(isManDay(offer!) ? {} : { effective_per_session_eur: rate.perSession }),
 				// What actually leaves the account. "excl. VAT" alone was unanswerable for the
 				// buyer whose budget decided the sale.
 				...(vatFor(input.audience, finalTotal) ? { vat: vatFor(input.audience, finalTotal)!.display } : {}),
@@ -181,7 +198,12 @@ export function composeBrief(input: BriefInput) {
 						},
 					}
 				: input.audience === "company"
-					? { b2b_concession_available: null, note: `No concession on this deal size — it needs ${meta.negotiation.triggers.join(" or ")}. Do not imply one is available.` }
+					? {
+							b2b_concession_available: null,
+							note: isManDay(offer!)
+								? `No free-session ladder on ${offer!.name}: it is priced per man-day and its B2B concession is the first ${meta.man_day?.free_weeks ?? 8} weeks free, already in the terms. Do not propose free sessions on it.`
+								: `No concession on this deal size — it needs ${meta.negotiation.triggers.join(" or ")}. Do not imply one is available.`,
+						}
 					: {}),
 			// The floor the terms promise on every response, finally computed. It was previously
 			// asserted in prose and enforced by nobody, so the first rung of the only sanctioned
@@ -190,7 +212,8 @@ export function composeBrief(input: BriefInput) {
 				effective_per_session_eur: rate.perSession,
 				floor_eur_per_session: rate.floor,
 				sessions_counted: rate.sessions,
-				status: rate.breachesFloor ? "BELOW_FLOOR" : "at_or_above_floor",
+				status: isManDay(offer!) ? "exempt_man_day" : rate.breachesFloor ? "BELOW_FLOOR" : "at_or_above_floor",
+				...(isManDay(offer!) && offer!.floor_exempt_basis ? { basis: offer!.floor_exempt_basis } : {}),
 			},
 			next: "Read the brief back to the visitor. When they explicitly agree on the price (say the number), call send_mentoring_offer with price_agreed: true. If they hesitate at any point, offer the free intro call — see cta.",
 			cta: ctaBlock(offer!.id),

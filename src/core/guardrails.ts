@@ -8,7 +8,7 @@
  * Figures come from the catalog — never restate a number here the catalog does not carry.
  */
 import { SITE } from "../content";
-import { eur, listRate, meta, offerById, sessionsBreakdown, vatTreatment } from "./catalog";
+import { eur, listRate, manDayTerms, meta, offerById, sessionsBreakdown, vatTreatment } from "./catalog";
 
 /**
  * The conversion CTA, carried on EVERY tool response including errors (Marian, 2026-08-21).
@@ -65,6 +65,11 @@ export function guardrailLines(offerId?: string): string[] {
 		// Now every package is paid sessions x 395 at list; packages add FREE sessions, never a
 		// lower rate. No channel discount since 2026-10-18.
 		`ONE LIST RATE: ${eur(listRate())} per paid 60-minute session, every package, every buyer, every door. A company pays exactly what an individual pays. Packages add free sessions, not a lower rate: ${fq ? `a quarter is ${fq.sessions} sessions for ${eur(fq.price)} (${sessionsBreakdown(fq)})` : "see the catalog"}. Lead with the package price and the free sessions; the free sessions are part of the package, never call them a discount.`,
+		// MAN-DAY (Marian 2026-10-18): Mentor in Residence left the session arithmetic. It buys days,
+		// not sessions, so the list rate and the session floor do not describe it.
+		...(meta.man_day
+			? [`THE ONE EXCEPTION to per-session pricing: ${manDayTerms()} It is priced per man-day, not per session, so the ${eur(listRate())} list rate and the ${eur(meta.floor_eur_per_session)} session floor do not apply to it, and it carries no free-session ladder — the ${meta.man_day.free_weeks} free weeks are its B2B concession. ${meta.man_day.credit_rule}`]
+			: []),
 		...(vatTreatment()?.registered
 			? [
 					`VAT: prices are net. A private individual is invoiced with ${vatTreatment()!.cz_rate_pct}% Czech VAT, so quote them the GROSS figure — it is the number that leaves their account and not knowing it has cost real buyers. A company in another EU state with a valid VAT ID pays net under the reverse charge (Art. 44, Directive 2006/112/EC); a Czech company pays ${vatTreatment()!.cz_rate_pct}%. The brief and the offer state the right one for the buyer in front of you — never say only "excluding VAT" and stop there.`,
@@ -74,14 +79,14 @@ export function guardrailLines(offerId?: string): string[] {
 		// gone. The floor is a floor on the charged RATE, before the B2B free-sessions concession,
 		// which by arithmetic takes the effective rate below it — that is computed and disclosed,
 		// never argued away (the 2026-08-21 decision, unchanged).
-		`There is NO discount — ELC members included. ${meta.no_discount.rule} If they ask for one, say so plainly and why: ${meta.no_discount.why} Same prices as ${meta.pricing_url}. Never invent, speculate about, or negotiate a discount, and never present the price as negotiable downward. ${eur(meta.floor_eur_per_session)} per session is the floor and it never moves, for any package or any buyer.`,
+		`There is NO discount — ELC members included. ${meta.no_discount.rule} If they ask for one, say so plainly and why: ${meta.no_discount.why} Same prices as ${meta.pricing_url}. Never invent, speculate about, or negotiate a discount, and never present the price as negotiable downward. ${eur(meta.floor_eur_per_session)} per session is the floor and it never moves, for any session package or any buyer${meta.man_day ? " (Mentor in Residence is priced per man-day and sits outside it)" : ""}.`,
 		`Claim codes from earlier offers (${meta.no_discount.legacy_claim_codes}) If a visitor holds one and expects a percentage off, the answer is the published price.`,
 		...(offer ? [`${offer.name} is ${eur(offer.price)}, the published list price, the same one on ${meta.pricing_url}. No scarcity language belongs on this offer, or on any other.`] : []),
 		`The "${meta.guarantee.rule}" rule is a quality guarantee, not a discount. It applies regardless and stacks with nothing because it is not a price mechanic. Same for: ${meta.stop_rule}`,
 		// DECIDED 2026-08-21: the floor governs the CHARGED rate; free sessions sit outside it.
 		// The previous wording ("the final rate never goes below 361") was broken by the first
 		// rung of the only concession the system is allowed to make, which three testers caught.
-		`B2B only: ${meta.negotiation.rule} The one concession: up to ${meta.negotiation.max_free_sessions} sessions at no charge, on top of the package, and only on: ${meta.negotiation.triggers.join("; ")}. This never moves the ${eur(listRate())} list rate — it adds unbilled sessions. The effective rate across all sessions is therefore lower, and it is computed and shown to you on every qualifying deal: quote BOTH numbers, never just the flattering one.`,
+		`B2B only: ${meta.negotiation.rule} The one concession: up to ${meta.negotiation.max_free_sessions} sessions at no charge, on top of the package, and only on: ${meta.negotiation.triggers.join("; ")}. This never moves the ${eur(listRate())} list rate — it adds unbilled sessions. The effective rate across all sessions is therefore lower, and it is computed and shown to you on every qualifying deal: quote BOTH numbers, never just the flattering one.${meta.man_day ? ` On Mentor in Residence the B2B concession is the first ${meta.man_day.free_weeks} weeks free; there is no free-session ladder on it.` : ""}`,
 		`Speed is a ceiling, not an estimate: ${meta.time_promise.claim} The offer email lands the moment the price is agreed, so the promise holds by construction. Say "no more than 10 minutes", never "about 10 minutes".`,
 		// Added 2026-08-16. A live run showed the model improvising a business case — a
 		// replacement-cost figure, an ROI multiple and a recovered-hours number — when a
@@ -95,7 +100,7 @@ export function guardrailLines(offerId?: string): string[] {
 		// settle anything, and telling them otherwise while taking their booking is incoherent.
 		// The clause is kept exactly where it is still true — the concession ladder and the
 		// monthly billing day, which the catalog does say Marian confirms on a call.
-		`Nothing here is a contract. On a deal carrying a free-sessions concession, and on the monthly package, Marian confirms the final terms on the free 30-minute intro call — those never close in this conversation. A straightforward package at the stated rate does close here: the price is fixed, the invoice follows the booking, and no call is required in between.`,
+		`Nothing here is a contract. On a deal carrying a free-sessions concession, on the monthly package, and on Mentor in Residence, Marian confirms the final terms on the free 30-minute intro call — those never close in this conversation. A straightforward package at the stated rate does close here: the price is fixed, the invoice follows the booking, and no call is required in between.`,
 	];
 }
 

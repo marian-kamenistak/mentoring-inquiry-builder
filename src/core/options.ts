@@ -9,7 +9,7 @@
  */
 import { MC_FACTS, PRICING_DEFENSE, SITE, WHY_MARIAN } from "../content";
 import { ONBOARDING_QUESTIONS } from "./onboarding";
-import { eur, focusAreas, meta, motivations, offers, priceDisplay, routing, sessionsBreakdown, visibilityOptions } from "./catalog";
+import { eur, focusAreas, isManDay, manDayTerms, meta, motivations, offers, priceDisplay, routing, sessionsBreakdown, visibilityOptions } from "./catalog";
 import { ctaBlock, guardrailLines } from "./guardrails";
 
 export function mentoringOptions() {
@@ -142,10 +142,19 @@ export function mentoringOptions() {
 			price: o.price,
 			price_display: priceDisplay(o, o.price),
 			sessions: o.sessions,
-			sessions_note: o.commitment?.sessions_are === "per_month" ? `${o.sessions} sessions PER MONTH, not per engagement` : undefined,
-			per_session_eur: o.sessions ? Math.round((o.price / o.sessions) * 100) / 100 : o.price,
-			list_rate_per_session_eur: o.per_session,
-			free_sessions: o.free_sessions ?? 0,
+			sessions_note: isManDay(o)
+				? `${o.man_days} man-days PER MONTH; up to ${o.sessions} sessions a month is the pool a month holds, not a session count you sell`
+				: o.commitment?.sessions_are === "per_month"
+					? `${o.sessions} sessions PER MONTH, not per engagement`
+					: undefined,
+			// A man-day SKU is not session arithmetic (2026-10-18): no per-session figures on it.
+			...(isManDay(o)
+				? { pricing_model: "man_day", man_days: o.man_days, rate_per_man_day_eur: o.rate_per_md, man_day_terms: manDayTerms() }
+				: {
+						per_session_eur: o.sessions ? Math.round((o.price / o.sessions) * 100) / 100 : o.price,
+						list_rate_per_session_eur: o.per_session,
+						free_sessions: o.free_sessions ?? 0,
+					}),
 			sessions_breakdown: sessionsBreakdown(o),
 			value: o.value,
 			...(o.commitment ? { commitment: o.commitment.terms } : {}),
@@ -157,6 +166,9 @@ export function mentoringOptions() {
 			who: `Company audience only, and only on: ${meta.negotiation.triggers.join("; ")}.`,
 			rule: meta.negotiation.rule,
 			never: "Never on single-leader deals. Never a rate cut.",
+			...(meta.man_day
+				? { mentor_in_residence: `${manDayTerms()} No free-session ladder on it — the ${meta.man_day.free_weeks} free weeks are the concession, and they are already in the terms.` }
+				: {}),
 			// The concession SIZE is deliberately no longer published here. The L&D buyer read
 			// "up to 8, proposed progressively, start low" straight out of the payload and
 			// correctly concluded no competent buyer accepts the first rung — it cost money on
