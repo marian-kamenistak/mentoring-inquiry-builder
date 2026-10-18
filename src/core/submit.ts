@@ -649,7 +649,7 @@ export function offerEmailHtml(args: {
       </table>
       <p style="margin:30px 0 4px;font-size:15px;line-height:1.65;color:#333;">${bookUrl ? "If the first session does not work for you, rate it below 8/10 and it is free. If it is not working by session 2, we stop and the rest is on me." : "Nothing here is a contract — the intro call is where we both check the fit. If it's not a fit, no hard feelings and no invoice."}</p>
       <p style="margin:16px 0 0;font-size:15px;line-height:1.5;color:#171717;font-weight:600;">Marian Kamenistak</p>
-      <p style="margin:0;font-size:13px;line-height:1.5;color:#888;">3,400+ sessions · 300+ leaders · 9.2/10 across 300+ reviews · <a href="https://www.marian.coach/?ref=offer-email" style="color:${accent};">marian.coach</a></p>
+      <p style="margin:0;font-size:13px;line-height:1.5;color:#888;">3,400+ sessions · 300+ leaders · 9.79/10 session rating · <a href="https://www.marian.coach/?ref=offer-email" style="color:${accent};">marian.coach</a></p>
     </td></tr>
     <tr><td align="center" style="padding:24px 20px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
       <p style="margin:0;font-size:12px;line-height:1.6;color:#888;">You got this because you built a mentoring inquiry through marian.coach's AI wizard. One more thing, free either way: the <a href="https://www.engineeringleaders.io/partner/membership/free/?ref=offer-email" style="color:${accent};">Engineering Leaders Community</a> Marian founded — meetups, Slack with 3,100+ leaders, newsletter.</p>
