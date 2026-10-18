@@ -1,6 +1,6 @@
 # AI mentoring fit and book — MCP server
 
-Hire an engineering-leadership mentor through your AI assistant. This remote MCP server builds a 1:1 mentoring inquiry with [Marian Kamenistak](https://www.marian.coach/?ref=github) — 3,400+ paid sessions with 300+ leaders from 17 countries since 2019, 9.2/10 average review — and ends with a formal itemized offer in your inbox.
+Hire an engineering-leadership mentor through your AI assistant. This remote MCP server builds a 1:1 mentoring inquiry with [Marian Kamenistak](https://www.marian.coach/?ref=github) — 3,600+ sessions with 317 leaders from 17 countries since 2019, rated 9.17/10 on average since 2024 — and ends with a formal itemized offer in your inbox.
 
 **10 minutes, no discount.** Use Marian's AI tool to evaluate our mentoring fit and book your first session in 10 minutes. Same prices as the [website](https://www.marian.coach/pricing/?ref=github): the quarter is 6 sessions (5 paid + 1 free) for 1,975 EUR, whichever door you come through. Marian is an AI freak, and this is a time saver. Start dates depend on the open mentee slots on the [live capacity chart](https://www.marian.coach/?ref=github).
 
