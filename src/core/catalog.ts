@@ -8,9 +8,9 @@
  *
  * PRICING v2026.09 (Marian, 2026-08-30): ONE list rate, 395 EUR per paid 60-minute session,
  * same whether you or your company pays. Packages add FREE sessions, not a lower rate (a
- * quarter is 6 sessions for 1,975 EUR: 5 paid + 1 free). ONE discount: 10% on every package
- * through the AI channel (chat|mcp), no booking required; ELC members get the same 10%.
- * Charged floor 296 EUR/session. Prices are computed HERE, server-side, from catalog data
+ * quarter is 6 sessions for 1,975 EUR: 5 paid + 1 free). NO DISCOUNT (Marian 2026-10-18): the
+ * 10% AI-channel discount and the ELC member 10% are gone — one price per package whichever
+ * door. Charged floor 329 EUR/session (One quarter effective). Prices are computed HERE, server-side, from catalog data
  * only — a "negotiated" number can never enter the pipeline because no tool accepts a price
  * as input.
  */
@@ -54,23 +54,12 @@ export type Offer = {
 	effective_per_session?: number;
 	public?: string;
 	duration_months?: number;
-	ai_channel_price?: number;
-	installments?: { count: number; eur: number; ai_channel_eur: number };
+	installments?: { count: number; eur: number };
 	value: string;
 	badge?: string;
 	audience?: string;
 	commitment?: Commitment;
 	program?: ProgramMeta;
-};
-
-export type Discount = {
-	pct: number;
-	channels: string[];
-	applies_to: string[];
-	requires: string;
-	floor_eur_per_session: number;
-	no_stack?: string[];
-	lead_with?: string;
 };
 
 export type Negotiation = {
@@ -109,10 +98,14 @@ type Catalog = {
 		vat_treatment?: VatTreatment;
 		guarantee: { threshold: number; scale: number; rule: string; note: string };
 		stop_rule: string;
-		member_rate: { pct: number; same_as?: string; who: string; note: string };
+		/** The tool's public display name + pitch (2026-10-18). Machine ids stay `mentoring-inquiry-builder`. */
+		tool: { name: string; pitch: string; pitch_cs: string };
+		/** Charged floor per session — the session share of any price never goes below it. */
+		floor_eur_per_session: number;
+		/** The answer to "is there a discount?" — there is none, on any package, through any door. */
+		no_discount: { rule: string; why: string; why_cs: string; legacy_claim_codes: string };
 			/** Availability only — how many parallel 1:1s Marian has room for. Never a price term. */
 			slots: { open: number; cap: number; proof: string; rule: string; as_of?: string };
-		discounts: { ai_channel: Discount };
 		negotiation: Negotiation;
 		cross_sell: { id: string; name: string; url: string; when: string; pitch: string; items: string[] };
 	};
@@ -188,9 +181,7 @@ export function multiLeaderError(offer: Offer, leaders: number): string | null {
 }
 
 /** The rate floor the terms promise. */
-export const floorPerSession = (): number => aiDiscount()?.floor_eur_per_session ?? meta.negotiation?.floor_eur_per_session ?? 0;
-
-const round2 = (n: number): number => Math.round(n * 100) / 100;
+export const floorPerSession = (): number => meta.floor_eur_per_session ?? meta.negotiation?.floor_eur_per_session ?? 0;
 
 /** The ONE list rate per paid 60-minute session (395). Packages add free sessions, never a lower rate. */
 export const listRate = (): number => offerById("first-quarter")?.per_session ?? offerById("single-session")!.price;
@@ -198,20 +189,9 @@ export const listRate = (): number => offerById("first-quarter")?.per_session ??
 /** The part of a price that pays for sessions. A residence retainer is a named line ON TOP of
  *  the sessions, not session money (decisions/2026-09-12-mir-reprice-retainer.md; Marian
  *  2026-10-08: the floor checks the session share only). Scaled by the same ratio, so it holds
- *  for the list price, the AI-door price and any multiple of either. */
+ *  for the list price and any multiple of it. */
 export const sessionShare = (offer: Offer, price: number): number =>
 	offer.retainer && offer.price > 0 ? price * (1 - offer.retainer / offer.price) : price;
-
-/** What an AI-channel buyer pays per delivered session on THIS package: the session share of
- *  ai_channel_price ÷ sessions. */
-export const doorRate = (offer: Offer): number => round2(sessionShare(offer, offer.ai_channel_price ?? offer.price) / (offer.sessions ?? 1));
-
-/** The headline AI-channel percentage. Throws rather than defaulting — a silent "16" is how the old figure outlived its decision. */
-export function discountPct(): number {
-	const pct = meta.discounts?.ai_channel?.pct;
-	if (typeof pct !== "number" || !Number.isFinite(pct)) throw new Error("catalog: meta.discounts.ai_channel.pct is missing");
-	return pct;
-}
 
 /** "5 paid + 1 free" / "1 paid". Free sessions are part of the package, never a discount. */
 export function sessionsBreakdown(offer: Offer): string {
@@ -279,47 +259,6 @@ export function effectiveRate(
 	const money = sessionShare(offer, finalPrice);
 	const perSession = sessions > 0 ? Math.round((money / sessions) * 100) / 100 : money;
 	return { perSession, sessions, floor, breachesFloor: floor > 0 && perSession < floor };
-}
-
-/** The AI-channel discount from catalog meta. Null when unconfigured (fail closed). */
-export function aiDiscount(): Discount | null {
-	return meta.discounts?.ai_channel ?? null;
-}
-
-/**
- * The discount as it applies to ONE offer for ONE submission channel. Server-side only —
- * model and client prices are never trusted. Null when: channel not in [chat, mcp], the
- * offer is not in applies_to, or the offer carries no ai_channel_price.
- *
- * NOT gated on open slots any more (Marian, 2026-08-21). It used to return null at zero open
- * slots, so the rate silently depended on how full the calendar was — which is the same claim
- * the pricing page retired as undefendable. Availability is a real constraint on when someone
- * can start; it is not a constraint on what they pay.
- */
-export function discountFor(
-	offerId: string,
-	channel: string,
-): { pct: number; headlinePct: number; saving: number; priceBefore: number; priceAfter: number; perSessionAfter: number } | null {
-	const d = aiDiscount();
-	const offer = offerById(offerId);
-	if (!d || !offer || !d.channels.includes(channel)) return null;
-	// Compare the CANONICAL id — offerById now accepts variant casing, so the raw argument
-	// must not be what decides whether the discount applies.
-	if (!d.applies_to.includes(offer.id) || offer.ai_channel_price === undefined) return null;
-	// The pct is still COMPUTED per package from the two real prices rather than asserted (the
-	// old blanket 16% never reconciled: 2,580 x 0.84 = 2,167.20, not 2,166). Since 2026-08-30
-	// every package is a rounded 10% off list, so the computed and headline figures agree —
-	// `saving` is what reconciles the rounding.
-	const saving = offer.price - offer.ai_channel_price;
-	const pct = offer.price > 0 ? Math.round((saving / offer.price) * 100) : 0;
-	return {
-		pct,
-		headlinePct: d.pct,
-		saving,
-		priceBefore: offer.price,
-		priceAfter: offer.ai_channel_price,
-		perSessionAfter: doorRate(offer),
-	};
 }
 
 /**

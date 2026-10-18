@@ -7,8 +7,6 @@
  * the valid ids, never a guess.
  */
 import {
-	aiDiscount,
-	discountPct,
 	focusAreaById,
 	matchFocus,
 	motivationById,
@@ -32,8 +30,7 @@ export type FocusMatch = {
 		name: string;
 		price: number;
 		price_display: string;
-		ai_channel_price?: { pct: number; price: number; display: string };
-		no_ai_channel_discount?: string;
+		sessions: string;
 		why?: string;
 	};
 	next: string;
@@ -64,8 +61,6 @@ export function matchMentoringFocus(
 	if (!routed) return { ok: false, error: `No route for ${band.id}/${mot.id} — re-ask the two questions.`, cta: ctaBlock() };
 	const offer = offerById(routed.offerId);
 	if (!offer) throw new Error(`routing references unknown offer "${routed.offerId}"`);
-	const d = aiDiscount();
-	const discounted = d && d.applies_to.includes(offer.id) && offer.ai_channel_price !== undefined;
 	return {
 		ok: true,
 		match: {
@@ -89,17 +84,7 @@ export function matchMentoringFocus(
 				name: offer.name,
 				price: offer.price,
 				price_display: priceDisplay(offer, offer.price),
-				...(discounted
-					? {
-							ai_channel_price: {
-								pct: d!.pct,
-								price: offer.ai_channel_price!,
-								display: `${priceDisplay(offer, offer.ai_channel_price!)} through this AI channel, no booking required — ${offer.sessions ?? 1} sessions, ${sessionsBreakdown(offer)}. Always present both figures.`,
-							},
-						}
-					: {
-							no_ai_channel_discount: `${offer.name} carries no AI-channel price in the catalog; ${priceDisplay(offer, offer.price)} is the list price. The ${discountPct()}% applies to every package that carries one.`,
-						}),
+				sessions: `${offer.sessions ?? 1} sessions, ${sessionsBreakdown(offer)}`,
 				...(opts.audience === "company" && offer.id === routing.company_offer
 					? { why: `Recommended because this is a company sponsoring ${opts.leaders_count ?? routing.company_offer_min_leaders}+ leaders. Also price the per-leader alternative (${routing.default_offer}) so they can compare — do not present this as the only option.` }
 					: {}),

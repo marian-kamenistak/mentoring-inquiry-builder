@@ -13,7 +13,7 @@
  *   npx vite-node scripts/tool.ts -- get_mentoring_options '{}'
  */
 import { ATTRIBUTION } from "../src/content";
-import { claimCap, focusAreaById, meta, offerById, offers } from "../src/core/catalog";
+import { focusAreaById, meta, offerById, offers } from "../src/core/catalog";
 import { ctaBlock, guardrailBlock } from "../src/core/guardrails";
 import { composeBrief } from "../src/core/brief";
 import { matchMentoringFocus } from "../src/core/match";
@@ -132,7 +132,6 @@ const TOOLS: Record<string, (a: any) => Promise<string>> = {
 				successDef: a.success_definition,
 				listPrice: result.listPrice,
 				finalPrice: result.finalPrice,
-				discountPct: result.discountPct,
 				freeSessions: result.freeSessions,
 				leaders,
 				effectivePerSession: result.effectivePerSession,
@@ -148,7 +147,6 @@ const TOOLS: Record<string, (a: any) => Promise<string>> = {
 			claim_code: result.claimCode,
 			list_price: result.listPrice,
 			list_price_display: result.listPriceDisplay,
-			...(result.discountPct ? { ai_channel_discount_pct: result.discountPct } : {}),
 			final_price: result.finalPrice,
 			final_price_display: result.finalPriceDisplay,
 			sessions_total: result.sessionsTotal,
@@ -194,7 +192,7 @@ async function main() {
 				`Usage: npx vite-node scripts/tool.ts -- <tool_name> '<json args>'`,
 				`Start with: get_mentoring_options`,
 				"",
-				`Discount cap: first ${claimCap()} people.`,
+				`${meta.tool.name}: no discount, same prices as ${meta.pricing_url}.`,
 			].join("\n"),
 		);
 		return;

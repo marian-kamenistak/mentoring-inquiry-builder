@@ -219,6 +219,24 @@ describe("boost webhook", () => {
 		expect(await res.json()).toMatchObject({ claim: "AI16-260830-ABCDEF01" });
 	});
 
+	it("matches the MC- codes minted since 2026-10-18, so no-discount offers still join their booking", async () => {
+		mockAttio([]);
+		const res = await handleBookingHook(
+			post({ meeting: { attendee: { attendee_email: "buyer@corp.com" }, custom_data: { data: { claim: "MC-261018-ABCDEF01" } } } }),
+			{ BOOKING_HOOK_SECRET: SECRET, ATTIO_TOKEN: "t" },
+			url,
+			"boost",
+		);
+		expect(await res.json()).toMatchObject({ claim: "MC-261018-ABCDEF01" });
+		const viaNote = await handleBookingHook(
+			post({ meeting: { attendee: { attendee_email: "buyer@corp.com" }, message: "my code: mc-261018-deadbeef" } }),
+			{ BOOKING_HOOK_SECRET: SECRET, ATTIO_TOKEN: "t" },
+			url,
+			"boost",
+		);
+		expect(await viaNote.json()).toMatchObject({ claim: "MC-261018-DEADBEEF" });
+	});
+
 	it("falls back to the booking note when custom_data is absent or malformed", async () => {
 		mockAttio([]);
 		const res = await handleBookingHook(

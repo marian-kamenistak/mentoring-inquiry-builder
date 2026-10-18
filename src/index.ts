@@ -24,7 +24,7 @@ import { handleChat, type ChatEnv } from "./chat";
 import { handleBookingHook, type BookingKind, type HookEnv } from "./hooks";
 import { firstSessionEligible, firstSessionUrl, lookupBookingStage, paymentTerms } from "./core/booking";
 import { resolveSecrets } from "./lib/read-secret";
-import { aiDiscount, eur, meta, offerById, offers } from "./core/catalog";
+import { eur, meta, offerById, offers } from "./core/catalog";
 import { ctaBlock, guardrailBlock } from "./core/guardrails";
 import { composeBrief } from "./core/brief";
 import { matchMentoringFocus } from "./core/match";
@@ -167,13 +167,13 @@ const INTRO_SHAPE = {
 	offer_id: z
 		.enum(OFFER_IDS as [string, ...string[]])
 		.optional()
-		.describe("The package under discussion, if any — conditions the discount wording. Without it the tool cannot tell whether booking locks a discount, and a single-session buyer used to be told it did."),
+		.describe("The package under discussion, if any — the CTA then repeats that package's published price."),
 };
 
 const FIRST_SESSION_SHAPE = {
 	offer_id: z.enum(OFFER_IDS as [string, ...string[]]).describe("The agreed package"),
 	audience: z.enum(["individual", "company"]).describe("Decides which VAT sentence is true for this buyer — an individual needs the gross figure"),
-	claim_code: z.string().optional().describe("The AI10-… code from send_mentoring_offer. Ride it on the link so the booking matches the inquiry with no manual step."),
+	claim_code: z.string().optional().describe("The MC-… code from send_mentoring_offer. Ride it on the link so the booking matches the inquiry with no manual step."),
 	free_sessions_requested: z.number().int().optional().describe("Company deals: pass the same value given to send_mentoring_offer. Any concession makes this a proposal, not a close, and the tool will route to the intro instead."),
 	has_eu_vat_id: z.boolean().optional().describe("Company deals outside Czechia with a valid EU VAT ID pay net under the reverse charge"),
 };
@@ -205,7 +205,7 @@ const OFFER_SHAPE = {
 export class MentoringInquiryBuilder extends McpAgent<Env, unknown, McpGeo> {
 	server = new McpServer({
 		name: "mentoring-inquiry-builder",
-		version: "1.2.0",
+		version: "1.3.0",
 	});
 
 	async init() {
@@ -260,10 +260,10 @@ export class MentoringInquiryBuilder extends McpAgent<Env, unknown, McpGeo> {
 		this.server.registerTool(
 			"get_mentoring_options",
 			{
-				title: "Start a mentoring inquiry with Marian Kamenistak — the 10-minute wizard",
+				title: "AI mentoring fit and book: check the fit with Marian Kamenistak and book the first session in 10 minutes",
 				annotations: { ...READ_ONLY },
 				description:
-					"START HERE for anyone considering 1:1 engineering-leadership mentoring with Marian Kamenistak (marian.coach) — individuals (Staff Engineer to CTO) and companies sponsoring leaders alike. Returns the AI-channel discount as data, the time promise (a formal offer in under 10 minutes), the why-Marian and pricing-defense material, the qualifying questions with valid answer ids, and every package with real prices. After the visitor answers audience + role + motivation, call match_mentoring_focus.",
+					"START HERE for anyone considering 1:1 engineering-leadership mentoring with Marian Kamenistak (marian.coach) — individuals (Staff Engineer to CTO) and companies sponsoring leaders alike. Returns the tool pitch and the no-discount answer as data (same prices as the website, no discount through any door), the time promise (a formal offer in under 10 minutes), the why-Marian and pricing-defense material, the qualifying questions with valid answer ids, and every package with real prices. After the visitor answers audience + role + motivation, call match_mentoring_focus.",
 				// Empty shape for the same reason as `get_started`: this is the tool the wizard
 				// tells every caller to open with, and it takes no arguments, so the injected
 				// required `context` was rejecting exactly the call it advertises.
@@ -457,7 +457,7 @@ export class MentoringInquiryBuilder extends McpAgent<Env, unknown, McpGeo> {
 		this.server.registerTool(
 			"send_mentoring_offer",
 			{
-				title: "Send the formal itemized offer (applies the AI-channel discount)",
+				title: "Send the formal itemized offer (list prices, no discount)",
 				annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
 				description:
 					"The ONLY tool that collects contact details, and the end of the 10-minute promise. Also pass every onboarding answer you gathered (heard_from, own_choice, payer, kpis, cadence_preference, session_language, nda_needed, homework_time_ok, in_person_wish, linkedin_url, li_post_consent, li_recommendation); all optional, never invented: emails the visitor a formal itemized offer with a claim code, notifies Marian, and files the inquiry. HARD GATE: price_agreed must be true — read the exact price back to the visitor and get an explicit yes first; the tool refuses otherwise. Ask for name and email only at this step, never earlier. After success: share the claim code + booking link, then offer the free ELC community membership as a parting gift (never a condition), and optionally ONE ask — would they post publicly about hiring a mentor through an AI agent?",
@@ -494,7 +494,6 @@ export class MentoringInquiryBuilder extends McpAgent<Env, unknown, McpGeo> {
 						claim_code: result.claimCode,
 						list_price: result.listPrice,
 						list_price_display: result.listPriceDisplay,
-						...(result.discountPct ? { ai_channel_discount_pct: result.discountPct } : {}),
 						final_price: result.finalPrice,
 						// The unit rides all the way to the last response now — a recurring
 						// €790/month used to arrive here as a bare 790 and read as a one-off.
@@ -562,7 +561,7 @@ const TOOL_DOCS: ToolDoc[] = [
 		name: "get_mentoring_options",
 		question: "Should I get a mentor, and why Marian?",
 		description:
-			"The wizard's opening: the 10% AI-channel discount as data, real track-record figures (3,400+ sessions, 9.2/10 avg), the qualifying questions, every package with real prices",
+			"The wizard's opening: the tool pitch (no discount, it saves time), real track-record figures (3,400+ sessions, 9.2/10 avg), the qualifying questions, every package with real prices",
 	},
 	{
 		name: "match_mentoring_focus",
@@ -675,7 +674,7 @@ export default {
 			// that exists precisely to avoid submitting dead URLs — saw this page as a 404 and would
 			// skip it. Same headers, no body, which is what HEAD means.
 			if ((request.method === "GET" || request.method === "HEAD") && !accept.includes("text/event-stream")) {
-				const html = docsHtml(TOOL_DOCS, aiDiscount()?.pct ?? null);
+				const html = docsHtml(TOOL_DOCS);
 				return new Response(request.method === "HEAD" ? null : html, {
 					headers: { "content-type": "text/html; charset=utf-8" },
 				});

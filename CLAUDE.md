@@ -4,8 +4,10 @@
 Mentoring AI Inquiry Wizard for the **mc** stream: authless MCP server at
 `https://www.marian.coach/mcp/mentoring` plus the chat backend for `/mentoring-chat/` on
 marian.coach. `get_started` routes a greeting/test/unclear message to the right tool below;
-eight more walk a visitor from options to a formal itemized offer (10% AI-channel
-discount on every package, floor 296 EUR/session, prices computed server-side only) and then to a booked session.
+eight more walk a visitor from options to a formal itemized offer (list prices, NO discount
+since 2026-10-18, floor 329 EUR/session, prices computed server-side only) and then to a booked session.
+Public display name: **AI mentoring fit and book** (`meta.tool` in the catalog); machine ids unchanged.
+Claim codes mint `MC-`; legacy `AI10-`/`AI16-` codes still verify and still join bookings, without a discount.
 Read-only REST at `/mcp/mentoring/api/openapi.json`. Receives Reclaim booking webhooks on **two**
 routes, one per scheduling link.
 

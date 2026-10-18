@@ -41,14 +41,13 @@ describe("first session is the main ending", () => {
 		focus: ["Delegation"],
 		successDef: "three decision areas handed to the leads",
 		listPrice: 1975,
-		finalPrice: 1778,
-		discountPct: 10,
+		finalPrice: 1975,
 		freeSessions: 0,
 		leaders: 1,
-		effectivePerSession: 296,
+		effectivePerSession: 329.17,
 		isCompany: true,
 		validUntil: "2026-10-23",
-		code: "AI10-261009-AAAAAAAA",
+		code: "MC-261009-AAAAAAAA",
 		program: null,
 	};
 

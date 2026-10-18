@@ -10,7 +10,7 @@
  * no secret exposure — it answers valid/invalid, nothing else.
  */
 import { SITE } from "./content";
-import { offers } from "./core/catalog";
+import { meta, offers } from "./core/catalog";
 import { guardrailLines } from "./core/guardrails";
 import { matchMentoringFocus } from "./core/match";
 import { mentoringOptions } from "./core/options";
@@ -39,7 +39,7 @@ export function handleApi(path: string, url: URL, env: { CLAIM_SECRET?: string }
 	if (route === "/" || route === "") {
 		return json({
 			endpoints: ["/options", "/match", "/program", "/verify", "/openapi.json"],
-			note: "Read-only. Sending an offer runs through the MCP tool send_mentoring_offer or the chat at /mentoring-chat/ — those doors carry the AI-channel discount.",
+			note: "Read-only. Sending an offer runs through the MCP tool send_mentoring_offer or the chat at /mentoring-chat/ — same prices as marian.coach/pricing, no discount through any door.",
 		});
 	}
 
@@ -78,9 +78,17 @@ export function handleApi(path: string, url: URL, env: { CLAIM_SECRET?: string }
 		}
 		const d = new Date(`${date}T12:00:00Z`);
 		if (Number.isNaN(d.getTime())) return json({ error: "invalid date" }, 400);
+		// The prefix is not part of the signature. Legacy AI10-/AI16- codes (issued before
+		// 2026-10-18) still verify as genuine, but no discount is honoured on any of them.
+		const legacy = /^AI\d{1,2}-/.test(code);
 		return responseFromPromise(
 			claimCode(env.CLAIM_SECRET, email, offerId, channel, d).then((expected) =>
-				json({ valid: expected === code, checked: { email, offer: offerId, date, channel } }),
+				json({
+					valid: /^(?:AI\d{1,2}|MC)-/.test(code) && expected.replace(/^MC-/, "") === code.replace(/^(?:AI\d{1,2}|MC)-/, ""),
+					discount: "none",
+					...(legacy ? { note: meta.no_discount.legacy_claim_codes } : {}),
+					checked: { email, offer: offerId, date, channel },
+				}),
 			),
 		);
 	}
@@ -125,14 +133,14 @@ function openapi() {
 			title: "Mentoring Inquiry Builder API",
 			version: "1.0.0",
 			description:
-				"Read-only REST layer over Marian Kamenistak's Mentoring Inquiry Builder: options, focus matching and program skeletons for 1:1 engineering-leadership mentoring. Prices come from the published catalog marian.coach renders. Sending an offer runs through the MCP server at /mcp/mentoring or the chat at /mentoring-chat/, where the 10% AI-channel discount applies.",
+				"Read-only REST layer over Marian Kamenistak's Mentoring Inquiry Builder: options, focus matching and program skeletons for 1:1 engineering-leadership mentoring. Prices come from the published catalog marian.coach renders. Sending an offer runs through the MCP server at /mcp/mentoring or the chat at /mentoring-chat/. Same prices as the website — there is no discount.",
 			contact: { name: "Marian Kamenistak", url: `${SITE}/`, email: "marian@marian.coach" },
 			license: { name: "MIT" },
 		},
 		servers: [{ url: `${SITE}${BASE}` }],
 		paths: {
 			"/options": {
-				get: { summary: "The wizard's opening: discount data, questions, packages, why-Marian", responses: ok },
+				get: { summary: "The wizard's opening: the tool pitch, questions, packages, why-Marian", responses: ok },
 			},
 			"/match": {
 				get: {
@@ -151,7 +159,7 @@ function openapi() {
 			"/verify": {
 				get: {
 					summary: "Verify a claim code (HMAC recompute, no datastore)",
-					parameters: [q("code", "AI10-YYMMDD-XXXXXXXX"), q("email", "email the offer went to"), q("offer", OFFER_IDS), q("date", "issue date YYYY-MM-DD"), q("channel", "mcp | chat")],
+					parameters: [q("code", "MC-YYMMDD-XXXXXXXX (legacy AI10-/AI16- codes also verify)"), q("email", "email the offer went to"), q("offer", OFFER_IDS), q("date", "issue date YYYY-MM-DD"), q("channel", "mcp | chat")],
 					responses: ok,
 				},
 			},

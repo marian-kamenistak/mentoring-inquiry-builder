@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-	aiDiscount,
 	clampConcession,
-	discountFor,
-	doorRate,
 	eur,
 	floorPerSession,
 	listRate,
@@ -23,44 +20,39 @@ import { submitInquiry } from "../src/core/submit";
 import type { Attribution } from "../src/core/attribution";
 
 describe("catalog pricing", () => {
-	it("first-quarter arithmetic agrees with the published pct and floor", () => {
+	it("first-quarter arithmetic: paid sessions x list rate, and its effective rate IS the floor", () => {
 		const fq = offerById("first-quarter")!;
-		const d = aiDiscount()!;
 		// Packages add FREE sessions, not a lower rate: list = PAID sessions x the list rate.
 		expect(fq.price).toBe((fq.sessions! - fq.free_sessions!) * fq.per_session!);
-		expect(fq.ai_channel_price).toBe(Math.round(fq.price * (1 - d.pct / 100)));
-		expect(doorRate(fq)).toBeGreaterThanOrEqual(d.floor_eur_per_session);
-		expect(Math.round((1 - fq.ai_channel_price! / fq.price) * 100)).toBe(d.pct);
+		// Floor 329 = One quarter effective (Marian 2026-10-18).
+		expect(floorPerSession()).toBe(329);
+		expect(fq.effective_per_session).toBe(floorPerSession());
 	});
 
-	it("discountFor is gated on the CHANNEL, and now covers every package", () => {
-		// ONE RATE (Marian 2026-08-21): the 16% was extended from first-quarter to the whole
-		// menu, so the per-session rate is identical everywhere. The channel gate is unchanged
-		// and is the thing that still protects the list price on the website.
-		for (const id of offers.map((o) => o.id)) {
-			expect(discountFor(id, "mcp")).not.toBeNull();
-			expect(discountFor(id, "chat")).not.toBeNull();
-			expect(discountFor(id, "web")).toBeNull();
+	it("NO DISCOUNT (2026-10-18): the catalog carries no AI-door price and no member rate", () => {
+		const m = meta as unknown as Record<string, unknown>;
+		expect(m.discounts).toBeUndefined();
+		expect(m.member_rate).toBeUndefined();
+		for (const o of offers) {
+			expect((o as unknown as Record<string, unknown>).ai_channel_price).toBeUndefined();
+			expect((o.installments as unknown as Record<string, unknown> | undefined)?.ai_channel_eur).toBeUndefined();
 		}
+		expect(meta.tool.name).toBe("AI mentoring fit and book");
+		expect(meta.no_discount.why).toContain("AI freak");
 	});
 
-	it("ONE LIST RATE: every package is paid sessions x the list rate, and 10% off through the channel", () => {
+	it("ONE LIST RATE: every package is paid sessions x the list rate, and never below the floor", () => {
 		// The claim "the rate is the rate" used to be false on the page that made it — three
 		// different per-session rates (430 / 430 / 395 / 361), with the COMPANY sku cheapest.
-		// Since 2026-08-30 packages add free sessions instead of lowering the rate, and the
-		// channel takes the same percentage off every package.
-		const d = aiDiscount()!;
+		// Since 2026-08-30 packages add free sessions instead of lowering the rate.
 		expect(listRate()).toBe(395);
-		expect(floorPerSession()).toBe(d.floor_eur_per_session);
+		expect(floorPerSession()).toBe(meta.negotiation.floor_eur_per_session);
 		for (const o of offers) {
 			expect(o.per_session).toBe(listRate());
 			// Company residence SKUs add a named retainer on top; the session rate itself never moves
 			// (decisions/2026-09-12-mir-reprice-retainer.md).
 			expect(o.price).toBe(((o.sessions ?? 1) - (o.free_sessions ?? 0)) * listRate() + (o.retainer ?? 0));
-			expect(o.ai_channel_price).toBe(Math.round(o.price * (1 - d.pct / 100)));
-			expect(doorRate(o)).toBeGreaterThanOrEqual(floorPerSession());
-			expect(discountFor(o.id, "mcp")!.perSessionAfter).toBe(doorRate(o));
-			expect(discountFor(o.id, "mcp")!.pct).toBe(d.pct);
+			expect((o.price - (o.retainer ?? 0)) / (o.sessions ?? 1)).toBeGreaterThanOrEqual(floorPerSession());
 		}
 	});
 });
@@ -135,7 +127,8 @@ describe("brief composition", () => {
 		if (r.ok) {
 			const fq = offerById("first-quarter")!;
 			expect(r.brief.offer.list_price).toBe(fq.price);
-			expect(r.brief.offer.ai_channel_price?.total).toBe(fq.ai_channel_price);
+			expect(r.brief.offer.list_price).toBe(fq.price);
+			expect(r.brief.offer.no_discount).toContain("no discount");
 			expect(r.brief.offer.sessions_breakdown).toBe("5 paid + 1 free");
 		}
 	});
@@ -144,7 +137,7 @@ describe("brief composition", () => {
 		const r = composeBrief({ ...base, audience: "company", leaders_count: 3 });
 		expect(r.ok).toBe(true);
 		if (r.ok) {
-			expect(r.brief.offer.ai_channel_price?.total).toBe(3 * offerById("first-quarter")!.ai_channel_price!);
+			expect(r.brief.offer.list_price).toBe(3 * offerById("first-quarter")!.price);
 			expect((r.brief as any).b2b_concession_available?.max_free_sessions).toBe(8);
 		}
 	});
@@ -157,25 +150,23 @@ describe("brief composition", () => {
 });
 
 describe("guardrails + options carry the magnet", () => {
-	it("guardrails state the one discount, the floor, and no scarcity", () => {
+	it("guardrails state there is no discount, the floor, and no scarcity", () => {
 		const text = guardrailLines().join(" ");
-		// One list rate, one percentage on every package (2026-08-30).
 		expect(text).toContain(`ONE LIST RATE: ${eur(listRate())}`);
-		expect(text).toContain(`${aiDiscount()!.pct}% off every package`);
+		expect(text).toContain("There is NO discount");
+		expect(text).toContain("ELC members included");
+		expect(text).toContain(meta.no_discount.why);
+		expect(text).toContain(`${eur(329)} per session is the floor`);
 		expect(text).toContain("5 paid + 1 free");
-		// "No stacking" was retired with the cap (2026-08-21): there is no second discount left for
-	// it to refuse to stack with, and ELC members now qualify through this channel rather than
-	// beside it. Assert the replacement, and assert the scarcity is actually gone.
-	expect(text).toContain("qualify right away");
-	expect(text).not.toMatch(/No stacking|first \d+ people|CAPPED/i);
+		expect(text).not.toMatch(/\d+% off|AI-door|1,778|No stacking|first \d+ people|CAPPED/i);
 	});
 
-	it("options expose the discount + time promise as data fields", () => {
+	it("options expose the tool pitch, the no-discount answer and the time promise as data", () => {
 		const o = mentoringOptions() as any;
-		const fq = offerById("first-quarter")!;
-		expect(o.ai_channel_discount?.pct).toBe(aiDiscount()!.pct);
-		expect(o.ai_channel_discount?.price_before).toBe(fq.price);
-		expect(o.ai_channel_discount?.price_after).toBe(fq.ai_channel_price);
+		expect(o.ai_channel_discount).toBeUndefined();
+		expect(o.tool?.name).toBe(meta.tool.name);
+		expect(o.tool?.no_discount).toContain(meta.no_discount.why);
+		expect(o.offers.every((x: any) => x.ai_channel_price === undefined && x.no_ai_channel_discount === undefined)).toBe(true);
 		expect(o.time_promise?.minutes).toBe(10);
 		expect(slotsOpen()).toBeGreaterThan(0);
 	});
@@ -188,11 +179,30 @@ describe("guardrails + options carry the magnet", () => {
 		expect(offers.find((o) => o.id === "mentor-in-residence")!.price).toBe(10332);
 	});
 
-	it("what a client PAYS through the wizard is the approved AI-door figure on every package", () => {
-		expect(offers.find((o) => o.id === "single-session")!.ai_channel_price).toBe(356);
-		expect(offers.find((o) => o.id === "first-quarter")!.ai_channel_price).toBe(1778);
-		expect(offers.find((o) => o.id === "monthly")!.ai_channel_price).toBe(711);
-		expect(offers.find((o) => o.id === "mentor-in-residence")!.ai_channel_price).toBe(9299);
+	it("what a client PAYS through the wizard is the list price on every package, every channel", async () => {
+		for (const o of offers) {
+			for (const channel of ["mcp", "chat"] as const) {
+				const r = await submitInquiry({} as any, {
+					name: "Test Person",
+					email: "test@example.com",
+					offer_id: o.id,
+					channel,
+					audience: o.audience === "company" ? "company" : "individual",
+					...(o.audience === "company" ? { leaders_count: 1 } : {}),
+					role_band: "em",
+					motivation: "scale-jump",
+					focus_area_ids: ["scaling-org"],
+					success_definition: "I stop being the bottleneck",
+					price_agreed: true,
+				} as any);
+				expect(r.ok).toBe(true);
+				if (r.ok) {
+					expect(r.finalPrice).toBe(r.listPrice);
+					expect(r.finalPrice).toBe(o.price);
+					expect(r.claimCode).toMatch(/^MC-\d{6}-[0-9A-F]{8}$/);
+				}
+			}
+		}
 	});
 });
 

@@ -4,21 +4,20 @@
  * the Attio patterns from mc-web's ai-waitlist.ts (person upsert, typed entry_values,
  * duplicate check then PATCH).
  *
- * Server-side recompute is the contract: no tool accepts a price as input. The discount is
- * keyed on channel (chat|mcp — the web configurator never discounts), the B2B concession is
+ * Server-side recompute is the contract: no tool accepts a price as input. There is no
+ * channel discount (retired 2026-10-18) — every door pays the list price; the B2B concession is
  * clamped against catalog data, and price_agreed is a hard gate — the offer email does not
  * exist until the visitor said yes to a number the catalog computed.
  *
- * Claim code: AI<pct>-<YYMMDD>-<8 hex> (AI10- since 2026-08-30) where hex = first 8 of
+ * Claim code: MC-<YYMMDD>-<8 hex> (since 2026-10-18; AI16-/AI10- codes issued earlier still
+ * verify but carry no discount) where hex = first 8 of
  * HMAC-SHA256(CLAIM_SECRET, lower(email)|offer_id|YYMMDD|channel). Verifiable at
  * /mcp/mentoring/api/verify without any datastore — the Attio entry is primary evidence,
  * the HMAC is the independent audit trail.
  */
 import { type Attribution, attributionValues, laneFromCampaign } from "./attribution";
 import {
-	aiDiscount,
 	clampConcession,
-	discountFor,
 	effectiveRate,
 	eur,
 	focusAreaById,
@@ -88,7 +87,6 @@ export type SubmitResult =
 			listPriceDisplay: string;
 			finalPrice: number;
 			finalPriceDisplay: string;
-			discountPct: number | null;
 			freeSessions: number;
 			/** Set when a requested concession was refused — never silently zero it. */
 			concessionRejected: string | null;
@@ -147,13 +145,10 @@ export async function claimCode(secret: string | undefined, email: string, offer
 		.map((b) => b.toString(16).padStart(2, "0"))
 		.join("")
 		.slice(0, 8);
-	// The prefix names the campaign that actually applied. Stamping "AI16" on a €430 single
-	// session at 0% off was the defect two testers said they would screenshot and argue about
-	// — a code named after a discount that was never granted. Derived from (offerId, channel)
-	// only, so /api/verify reproduces it without needing an extra parameter.
-	const d = discountFor(offerId, channel);
-	const prefix = d ? `AI${d.pct}` : "MC";
-	return `${prefix}-${ymd}-${hex.toUpperCase()}`;
+	// The prefix used to name the discount that applied (AI16-, AI10-). There is no discount since
+	// 2026-10-18, so every new code is MC-. /api/verify still accepts the legacy prefixes, because
+	// codes already sent out must keep identifying their inquiry.
+	return `MC-${ymd}-${hex.toUpperCase()}`;
 }
 
 async function postSlack(webhook: string | undefined, text: string): Promise<void> {
@@ -208,10 +203,9 @@ export async function submitInquiry(env: SubmitEnv, input: SubmitInput): Promise
 	const mlErr = multiLeaderError(offer, leaders);
 	if (mlErr) return { ok: false, error: mlErr };
 	const multi = leaderMultiplier(offer, leaders);
-	const discount = discountFor(offer.id, channel);
-	const perLeader = discount ? discount.priceAfter : offer.price;
+	// No channel discount (2026-10-18): what the buyer pays is the list price, through every door.
 	const listPrice = offer.price * multi;
-	const finalPrice = perLeader * multi;
+	const finalPrice = listPrice;
 	const concession = clampConcession(audience, leaders, offer.id, input.free_sessions_requested ?? 0);
 	const freeSessions = concession.granted;
 	const sessionsTotal = sessionsDelivered(offer, leaders);
@@ -250,15 +244,7 @@ export async function submitInquiry(env: SubmitEnv, input: SubmitInput): Promise
 	}
 
 	const focusLines = focus.map((f) => `• ${f!.label}`);
-	const priceLines = discount
-		? [
-				`List price: ${priceDisplay(offer, listPrice)}${multi > 1 ? ` (${leaders} leaders × ${eur(offer.price)})` : ""}`,
-				// "intro booked" removed 2026-08-30: the booking has not been a condition of this
-				// price since 2026-08-21, and this line was printing the old condition into every
-				// offer email — the one artifact a buyer keeps and forwards.
-				`AI-channel price (-${discount.pct}%): ${priceDisplay(offer, finalPrice)}`,
-			]
-		: [`Price: ${priceDisplay(offer, finalPrice)}`];
+	const priceLines = [`Price: ${priceDisplay(offer, finalPrice)}${multi > 1 ? ` (${leaders} leaders × ${eur(offer.price)})` : ""}`];
 	if (offer.commitment) priceLines.push(`Commitment: ${offer.commitment.terms}`);
 	{ const v = vatFor(audience, finalPrice); if (v) priceLines.push(`VAT: ${v.display}`); }
 	// Packages add free sessions, not a lower rate (2026-08-30) — the breakdown rides with the count.
@@ -296,9 +282,7 @@ export async function submitInquiry(env: SubmitEnv, input: SubmitInput): Promise
 	// status and the Slack line all name the ending the agent was told to offer.
 	const firstSession = firstSessionEligible(input.offer_id, { freeSessionsProposed: input.free_sessions_requested }).eligible;
 
-	const slackPrice = discount
-		? `~${eur(listPrice)}~ → *${priceDisplay(offer, finalPrice)}* (AI channel, -${discount.pct}%)`
-		: `*${priceDisplay(offer, finalPrice)}*`;
+	const slackPrice = `*${priceDisplay(offer, finalPrice)}*`;
 	const slackText = [
 		`${isTest ? "[TEST] " : ""}:robot_face: *${name}*${company ? ` (${company})` : ""} agreed a *${offer.name}* offer via *${channel}* at ${slackPrice}${freeSessions ? ` +${freeSessions} free sessions proposed` : ""}`,
 		`${audience} · ${roleBandById(input.role_band)!.label} · ${focus.map((f) => f!.id).join(", ")} · ${email}${visibility?.startsWith("yes") ? " · :loudspeaker: open to public announcement" : ""}`,
@@ -502,7 +486,6 @@ export async function submitInquiry(env: SubmitEnv, input: SubmitInput): Promise
 						successDef,
 						listPrice,
 						finalPrice,
-						discountPct: discount?.pct ?? null,
 						freeSessions,
 						leaders,
 						effectivePerSession: rate.perSession,
@@ -533,7 +516,6 @@ export async function submitInquiry(env: SubmitEnv, input: SubmitInput): Promise
 		listPriceDisplay: priceDisplay(offer, listPrice),
 		finalPrice,
 		finalPriceDisplay: priceDisplay(offer, finalPrice),
-		discountPct: discount?.pct ?? null,
 		freeSessions,
 		concessionRejected: concession.rejected,
 		// Echoed back so the consent answer is visible in the result, not merely validated and
@@ -556,8 +538,8 @@ export async function submitInquiry(env: SubmitEnv, input: SubmitInput): Promise
 
 /**
  * The visitor's formal itemized offer email. Light theme, Outlook-safe tables (mc-web
- * email conventions), accent #D02E7C. Struck list price above the AI-channel price, the
- * claim code in a bordered callout, one CTA: book the intro — the booking locks the price.
+ * email conventions), accent #D02E7C. The list price (no discount since 2026-10-18), the
+ * claim code in a bordered callout, one CTA: book the first session, or the intro as fallback.
  */
 export function offerEmailHtml(args: {
 	first: string;
@@ -567,7 +549,6 @@ export function offerEmailHtml(args: {
 	successDef: string;
 	listPrice: number;
 	finalPrice: number;
-	discountPct: number | null;
 	freeSessions: number;
 	leaders: number;
 	effectivePerSession: number;
@@ -579,9 +560,8 @@ export function offerEmailHtml(args: {
 	/** Set when the deal may skip the intro: the email then ends on booking the first session. */
 	bookUrl?: string;
 }): string {
-	const { first, offer, sessions, focus, successDef, listPrice, finalPrice, discountPct, freeSessions, leaders, effectivePerSession, isCompany, vat, validUntil, code, program, bookUrl } = args;
+	const { first, offer, sessions, focus, successDef, finalPrice, freeSessions, leaders, effectivePerSession, isCompany, vat, validUntil, code, program, bookUrl } = args;
 	const offerName = offer.name;
-	const d = aiDiscount();
 	const accent = "#D02E7C";
 	const rowStyle = `padding:8px 0;font-size:14px;line-height:1.6;color:#333;border-bottom:1px solid #eee;`;
 	const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -590,12 +570,8 @@ export function offerEmailHtml(args: {
 	// document the buyer forwards to finance.
 	const unit = offer.unit === "per_month" ? " / month" : offer.unit === "per_quarter" ? " / quarter" : offer.unit === "per_session" ? " / session" : "";
 
-	const headlinePrice = discountPct
-		? `<p style="margin:0 0 2px;font-size:15px;color:#888;"><s>${eur(listPrice)}</s> <span style="color:${accent};font-weight:700;">−${discountPct}% AI channel, you save ${eur(listPrice - finalPrice)}</span></p>
-     <p style="margin:0 0 6px;font-size:40px;line-height:1.05;font-weight:700;letter-spacing:-0.02em;color:#171717;">${eur(finalPrice)}<span style="font-size:14px;font-weight:500;color:#888;">${unit} excl. VAT</span></p>
-     <p style="margin:0 0 24px;font-size:13px;color:#888;">${sessions} sessions, ${sessionsBreakdown(offer)}${leaders > 1 && isPerLeader(offer) ? " per leader" : ""} — ${eur(effectivePerSession)} a session. It is yours because you built the inquiry here, no booking required; the offer holds until the date below.</p>`
-		: `<p style="margin:0 0 6px;font-size:40px;line-height:1.05;font-weight:700;letter-spacing:-0.02em;color:#171717;">${eur(finalPrice)}<span style="font-size:14px;font-weight:500;color:#888;">${unit} excl. VAT</span></p>
-     <p style="margin:0 0 24px;font-size:13px;color:#888;">${sessions} sessions, ${sessionsBreakdown(offer)} — ${eur(effectivePerSession)} a session. This is the published list price — there is no AI-channel price on ${esc(offerName)}.</p>`;
+	const headlinePrice = `<p style="margin:0 0 6px;font-size:40px;line-height:1.05;font-weight:700;letter-spacing:-0.02em;color:#171717;">${eur(finalPrice)}<span style="font-size:14px;font-weight:500;color:#888;">${unit} excl. VAT</span></p>
+     <p style="margin:0 0 24px;font-size:13px;color:#888;">${sessions} sessions, ${sessionsBreakdown(offer)}${leaders > 1 && isPerLeader(offer) ? " per leader" : ""} — ${eur(effectivePerSession)} a session. The published price, the same as on marian.coach; the offer holds until the date below.</p>`;
 
 	const programHtml = program
 		? `<tr><td colspan="2" style="padding:18px 0 4px;font-size:12px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:${accent};">Program skeleton (planning targets)</td></tr>
@@ -615,7 +591,7 @@ export function offerEmailHtml(args: {
 </style>
 </head>
 <body style="margin:0;padding:0;background-color:#faf7f2;">
-<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">Your offer, item by item. Book the intro to lock it.&nbsp;&zwnj;&nbsp;&zwnj;</div>
+<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">Your offer, item by item, and the next step.&nbsp;&zwnj;&nbsp;&zwnj;</div>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#faf7f2;">
 <tr><td align="center" style="padding:32px 12px;">
   <table role="presentation" class="container" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:600px;">
@@ -642,7 +618,7 @@ export function offerEmailHtml(args: {
         <tr><td style="${rowStyle}">Your definition of success</td><td align="right" style="${rowStyle}">${esc(successDef)}</td></tr>
         ${freeSessions ? `<tr><td style="${rowStyle}">B2B concession (proposed)</td><td align="right" style="${rowStyle}white-space:nowrap;">+${freeSessions} free sessions</td></tr>` : ""}
         ${offer.program?.async_access ? `<tr><td style="${rowStyle}">Between sessions</td><td align="right" style="${rowStyle}">Async access (Slack/WhatsApp, fair use)</td></tr>` : ""}
-        ${offer.installments && leaders === 1 && discountPct ? `<tr><td style="${rowStyle}">Payment option</td><td align="right" style="${rowStyle}white-space:nowrap;">${offer.installments.count} monthly payments of ${eur(offer.installments.ai_channel_eur)}</td></tr>` : ""}
+        ${offer.installments && leaders === 1 ? `<tr><td style="${rowStyle}">Payment option</td><td align="right" style="${rowStyle}white-space:nowrap;">${offer.installments.count} monthly payments of ${eur(offer.installments.eur)}</td></tr>` : ""}
         <tr><td style="${rowStyle}">Guarantee</td><td align="right" style="${rowStyle}">Any session below 7/10 is free</td></tr>
         <tr><td style="${rowStyle}">If it isn't working</td><td align="right" style="${rowStyle}">${esc(meta.stop_rule)}</td></tr>
         ${programHtml}
@@ -662,11 +638,7 @@ export function offerEmailHtml(args: {
         <tr><td style="border:2px solid ${accent};border-radius:12px;padding:18px 22px;">
           <p style="margin:0 0 6px;font-size:14px;font-weight:700;color:#171717;">Next step:</p>
           ${bookUrl ? `<p style="margin:0;font-size:14px;line-height:1.6;color:#333;">Book your first 60-minute session. The link already carries <strong>${code}</strong>, so there is nothing to paste.</p>
-          <p style="margin:8px 0 0;font-size:14px;line-height:1.6;color:#333;">Direct link: <a href="${bookUrl}" style="color:${accent};">${bookUrl}</a></p>` : `<p style="margin:0;font-size:14px;line-height:1.6;color:#333;">Book your free 30-minute intro call and paste <strong>${code}</strong> into the booking note. ${
-						discountPct
-							? `The price is already yours and holds until ${validUntil}; the call is where you and Marian check the fit before anything is invoiced.`
-							: `There is no discount to lock on ${esc(offerName)} — the call is simply where you and Marian check the fit before anything is invoiced.`
-					}${freeSessions ? " Marian confirms the free-sessions proposal on the call." : ""}</p>
+          <p style="margin:8px 0 0;font-size:14px;line-height:1.6;color:#333;">Direct link: <a href="${bookUrl}" style="color:${accent};">${bookUrl}</a></p>` : `<p style="margin:0;font-size:14px;line-height:1.6;color:#333;">Book your free 30-minute intro call and paste <strong>${code}</strong> into the booking note. The price holds until ${validUntil}; the call is where you and Marian check the fit before anything is invoiced.${freeSessions ? " Marian confirms the free-sessions proposal on the call." : ""}</p>
           <p style="margin:8px 0 0;font-size:14px;line-height:1.6;color:#333;">Direct link: <a href="${meta.booking_url}" style="color:${accent};">${meta.booking_url}</a></p>`}
         </td></tr>
       </table>

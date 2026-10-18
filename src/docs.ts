@@ -6,6 +6,7 @@
  * Gating on accept.includes("text/html") is the documented marian.coach 406 bug; the
  * Accept decision itself lives in index.ts.
  */
+import { meta } from "./core/catalog";
 
 export interface ToolDoc {
 	name: string;
@@ -15,37 +16,36 @@ export interface ToolDoc {
 
 const ENDPOINT = "https://www.marian.coach/mcp/mentoring";
 
-export function docsHtml(tools: ToolDoc[], discountPct: number | null): string {
+export function docsHtml(tools: ToolDoc[]): string {
 	const rows = tools
 		.map((t) => `<tr><td><code>${t.name}</code></td><td>${t.question}</td><td>${t.description}</td></tr>`)
 		.join("\n");
 
-	const discountLine = discountPct
-		? `<p><strong>Why build it here:</strong> mentoring inquiries built through this AI channel get <strong>${discountPct}% off every package</strong> — a quarter is 6 sessions (5 paid + 1 free) for 1,975 EUR, 1,778 EUR here — and the website itself carries no discount at all. <strong>No more than 10 minutes</strong> from first question to a formal itemized offer in your inbox. No cap and no booked call required — building the inquiry here is the whole qualification.</p>`
-		: "";
+	// No discount since 2026-10-18: the tool sells time. Strings come from the catalog.
+	const pitchLine = `<p><strong>${meta.tool.name}:</strong> ${meta.tool.pitch} Same prices as <a href="${meta.pricing_url}">${meta.pricing_url}</a>, no discount. ${meta.no_discount.why}</p>`;
 
 	return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Mentoring Inquiry Builder — MCP server | Marian Kamenistak</title>
-<meta name="description" content="Build your engineering-leadership mentoring inquiry with Marian Kamenistak from your own AI assistant: focus areas, definition of success, program, and a formal offer in 10 minutes${discountPct ? ` with a ${discountPct}% AI-channel discount` : ""}. Free remote MCP server, no auth.">
+<title>${meta.tool.name} — MCP server | Marian Kamenistak</title>
+<meta name="description" content="Build your engineering-leadership mentoring inquiry with Marian Kamenistak from your own AI assistant: focus areas, definition of success, program, and a formal offer and your first session booked in 10 minutes. Free remote MCP server, no auth.">
 <link rel="canonical" href="${ENDPOINT}">
-<meta property="og:title" content="Mentoring Inquiry Builder — MCP server">
-<meta property="og:description" content="Hire an engineering-leadership mentor through your AI assistant${discountPct ? ` — ${discountPct}% AI-channel discount, formal offer in 10 minutes` : ""}. 3,400+ sessions, 300+ leaders, 9.2/10 average.">
+<meta property="og:title" content="${meta.tool.name} — MCP server">
+<meta property="og:description" content="Hire an engineering-leadership mentor through your AI assistant — formal offer and first session booked in 10 minutes. 3,400+ sessions, 300+ leaders, 9.2/10 average.">
 <meta property="og:url" content="${ENDPOINT}">
 <meta property="og:type" content="website">
 <script type="application/ld+json">${JSON.stringify({
 		"@context": "https://schema.org",
 		"@type": "SoftwareApplication",
-		name: "Mentoring Inquiry Builder",
+		name: meta.tool.name,
 		applicationCategory: "BusinessApplication",
 		operatingSystem: "Any (MCP server, streamable HTTP)",
 		url: ENDPOINT,
 		offers: { "@type": "Offer", price: 0, priceCurrency: "EUR", description: "Free to connect and use, no auth." },
 		author: { "@type": "Person", name: "Marian Kamenistak", url: "https://www.marian.coach/" },
-		description: `MCP server that builds and prices a 1:1 engineering-leadership mentoring engagement with Marian Kamenistak${discountPct ? `, with a ${discountPct}% discount on inquiries sent through the AI channel` : ""}.`,
+		description: `MCP server that builds and prices a 1:1 engineering-leadership mentoring engagement with Marian Kamenistak and books the first session. Same prices as the website, no discount.`,
 	})}</script>
 <style>
 	body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 760px; margin: 2rem auto; padding: 0 1rem; line-height: 1.6; color: #1a1a1a; }
@@ -61,9 +61,9 @@ export function docsHtml(tools: ToolDoc[], discountPct: number | null): string {
 </style>
 </head>
 <body>
-<h1>Mentoring Inquiry Builder — MCP server</h1>
+<h1>${meta.tool.name} — MCP server</h1>
 <p>Build a 1:1 engineering-leadership mentoring engagement with Marian Kamenistak — 3,400+ paid sessions with 300+ leaders from 17 countries since 2019, 9.2/10 average review — directly from your AI assistant: pick your focus areas, define what success looks like, see the dated program, agree the price, and get a formal itemized offer by email. Works for individuals (Staff Engineer to CTO) and companies sponsoring their leaders.</p>
-${discountLine}
+${pitchLine}
 <p><strong>Endpoint:</strong> <code>${ENDPOINT}</code> (streamable HTTP, no auth, no signup)</p>
 
 <h2>Tools</h2>
@@ -84,7 +84,7 @@ ${rows}
 <p>No AI tool that supports MCP? The same wizard runs as a chat on <a href="https://www.marian.coach/mentoring-chat/?ref=mcp">marian.coach/mentoring-chat</a>, and the classic pages live at <a href="https://www.marian.coach/pricing/?ref=mcp">/pricing/</a>.</p>
 
 <h2>Plain REST, no MCP needed</h2>
-<p>The read-only tools double as GET endpoints for scripts: <code>${ENDPOINT}/api/options</code>, <code>/api/match?role_band=em&amp;motivation=scale-jump</code>, <code>/api/program?offer_id=first-quarter&amp;start_date=2026-09-01</code>, <code>/api/verify</code> (claim-code check). Spec: <a href="${ENDPOINT}/api/openapi.json">openapi.json</a>. Sending an offer stays on the MCP tool and <a href="https://www.marian.coach/mentoring-chat/?ref=mcp">the chat</a> — the doors that carry the discount.</p>
+<p>The read-only tools double as GET endpoints for scripts: <code>${ENDPOINT}/api/options</code>, <code>/api/match?role_band=em&amp;motivation=scale-jump</code>, <code>/api/program?offer_id=first-quarter&amp;start_date=2026-09-01</code>, <code>/api/verify</code> (claim-code check). Spec: <a href="${ENDPOINT}/api/openapi.json">openapi.json</a>. Sending an offer stays on the MCP tool and <a href="https://www.marian.coach/mentoring-chat/?ref=mcp">the chat</a> — same prices as the website.</p>
 
 <h2>Sibling server</h2>
 <p>Marian's general engineering-leadership toolkit (salary calculators, team-lead readiness, business-case builder — 9 tools) runs at <a href="https://www.marian.coach/mcp">marian.coach/mcp</a> — same pattern, complementary tools.</p>

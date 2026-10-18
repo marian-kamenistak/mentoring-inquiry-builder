@@ -5,8 +5,6 @@
  * model never does arithmetic.
  */
 import {
-	aiDiscount,
-	discountPct,
 	effectiveRate,
 	eur,
 	focusAreaById,
@@ -97,16 +95,15 @@ export function composeBrief(input: BriefInput) {
 	}
 	if (errors.length) return { ok: false as const, error: errors.join("; "), cta: ctaBlock(offer?.id) };
 
-	const d = aiDiscount();
 	const leaders = input.audience === "company" ? Math.max(1, input.leaders_count ?? 1) : 1;
-	const discounted = d && offer!.ai_channel_price !== undefined;
 	const negotiation = negotiationFor(input.audience, leaders, offer!.id);
 
 	// Leader arithmetic is now DATA (offer.per_leader), not `offer.id === "first-quarter"`.
 	// Pooled SKUs — Mentor in Residence — multiply neither price nor sessions.
 	const mult = leaderMultiplier(offer!, leaders);
 	const listTotal = offer!.price * mult;
-	const finalTotal = (discounted ? offer!.ai_channel_price! : offer!.price) * mult;
+	// No channel discount since 2026-10-18: the final price IS the list price.
+	const finalTotal = listTotal;
 	const sessionsTotal = sessionsDelivered(offer!, leaders);
 	const rate = effectiveRate(finalTotal, offer!, leaders, 0);
 
@@ -159,27 +156,10 @@ export function composeBrief(input: BriefInput) {
 				// What actually leaves the account. "excl. VAT" alone was unanswerable for the
 				// buyer whose budget decided the sale.
 				...(vatFor(input.audience, finalTotal) ? { vat: vatFor(input.audience, finalTotal)!.display } : {}),
-				...(discounted
-					? {
-							ai_channel_price: {
-								pct: d!.pct,
-								per_leader: offer!.ai_channel_price!,
-								total: finalTotal,
-								display: `${priceDisplay(offer!, finalTotal)} through this AI channel, no booking required (${d!.pct}% off the ${eur(listTotal)} list price; ${sessionsTotal} sessions, ${sessionsBreakdown(offer!)}, ${eur(rate.perSession)}/session).`,
-								...(offer!.installments && leaders === 1
-									? { installments: `${offer!.installments.count} monthly payments of ${eur(offer!.installments.ai_channel_eur)}` }
-									: {}),
-							},
-						}
-					: {
-							// State non-applicability positively. It used to be communicated only by
-							// the ABSENCE of a field, while `lead_with` had already promised the discount
-							// unconditionally — so single-session and monthly buyers reached the
-							// offer email still expecting a discount that never existed for them.
-							// Since 2026-08-30 every catalog package carries the AI-door price, so this
-							// branch is reached only when the catalog itself withholds one.
-							no_ai_channel_discount: `${offer!.name} carries no AI-channel price in the catalog — ${priceDisplay(offer!, listTotal)} is the published list price. Say this plainly instead of letting the ${discountPct()}% be assumed.`,
-						}),
+				...(offer!.installments && leaders === 1
+					? { installments: `${offer!.installments.count} monthly payments of ${eur(offer!.installments.eur)}` }
+					: {}),
+				no_discount: `${priceDisplay(offer!, listTotal)} is the published price, the same through this channel as on ${meta.pricing_url}. There is no discount.`,
 			},
 			...(negotiation
 				? {

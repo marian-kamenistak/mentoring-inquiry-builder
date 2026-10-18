@@ -8,7 +8,7 @@
  * Figures come from the catalog — never restate a number here the catalog does not carry.
  */
 import { SITE } from "../content";
-import { aiDiscount, doorRate, eur, listRate, meta, offerById, sessionsBreakdown, vatTreatment } from "./catalog";
+import { eur, listRate, meta, offerById, sessionsBreakdown, vatTreatment } from "./catalog";
 
 /**
  * The conversion CTA, carried on EVERY tool response including errors (Marian, 2026-08-21).
@@ -19,8 +19,8 @@ import { aiDiscount, doorRate, eur, listRate, meta, offerById, sessionsBreakdown
  * exit on it. The free intro call is the conversion event this whole server exists to
  * produce; it belongs in every payload, stated once, without urgency.
  *
- * `offerId` conditions the discount language: a single-session or monthly buyer used to be
- * told that booking "locks the 16% price" they can never have.
+ * `offerId` names the package on the table. Since 2026-10-18 there is no discount to condition
+ * (the old `locks_discount` line is gone); the price line repeats the list price for that package.
  */
 export function ctaBlock(offerId?: string): {
 	next_step: string;
@@ -28,13 +28,9 @@ export function ctaBlock(offerId?: string): {
 	free: string;
 	not_ready: string;
 	not_a_fit: string;
-	locks_discount?: string;
+	price?: string;
 } {
-	const d = aiDiscount();
 	const offer = offerId ? offerById(offerId) : undefined;
-	const discountApplies = !!d && !!offer && d.applies_to.includes(offer.id) && offer.ai_channel_price !== undefined;
-	// No offer chosen yet: the discount is still live as a general fact, so keep the line.
-	const discountUnknownYet = !offer && !!d;
 	return {
 		// Reworded 2026-08-30. This said the intro call was "the one action that moves this
 		// forward", which is true right up until someone agrees the price — at which point the
@@ -47,13 +43,9 @@ export function ctaBlock(offerId?: string): {
 		// The honest fourth exit used to exist only in get_mentoring_options, so it was gone by
 		// the time a visitor turned out to be the wrong person for this. It rides everywhere now.
 		not_a_fit: `If mentoring is not right for them — an IC who wants to stay hands-on and get better at the craft, a budget far under the cheapest package, therapy or legal territory, someone who wants a course — say so plainly, point them at ${meta.cross_sell.url} and the blog, and do not build an offer. That is a real ending, not a failure.`,
-		...(discountApplies
-			? { locks_discount: `${offer!.name} is ${eur(offer!.ai_channel_price!)} through this channel — ${d!.pct}% off the ${eur(offer!.price)} list price, ${eur(doorRate(offer!))} per session. No booking is required for that price; paste the claim code from the offer email into the booking note so Marian can match the two.` }
-			: discountUnknownYet
-				? { locks_discount: `Every package is ${d!.pct}% off through this channel, no booking required — the offer email carries the price and the claim code.` }
-				: offer
-					? { locks_discount: `${offer.name} carries no AI-channel price — ${eur(offer.price)} is the published price. Book the call because it is the fastest way to check the fit.` }
-					: {}),
+		...(offer
+			? { price: `${offer.name} is ${eur(offer.price)}, the published price on ${meta.pricing_url} — no discount through this channel or any other. Paste the claim code from the offer email into the booking note so Marian can match the two.` }
+			: {}),
 	};
 }
 
@@ -61,45 +53,30 @@ export function ctaBlock(offerId?: string): {
  * `offerId` scopes the terms to the package actually on the table.
  *
  * The cap language this used to guard against is gone entirely (Marian, 2026-08-21): there is
- * no "first N people" any more, on any package. Kept scoped anyway, because a package outside
- * `applies_to` should still not carry channel-rate terms it does not get.
+ * no "first N people" any more, on any package. The channel discount went 2026-10-18 too.
  */
 export function guardrailLines(offerId?: string): string[] {
-	const d0 = aiDiscount();
 	const offer = offerId ? offerById(offerId) : undefined;
-	// Suppress the discount section once we know the chosen package cannot carry it. With no
-	// package chosen yet, the discount is still a live general fact.
-	const discountRelevant = !offer || (!!d0 && d0.applies_to.includes(offer.id));
-	const d = discountRelevant ? d0 : null;
 	const fq = offerById("first-quarter");
 	return [
 		`All prices are fixed, in EUR, quoted net, publicly listed at ${meta.pricing_url}. Invoiced by ${meta.entity}${vatTreatment()?.registered ? `, VAT ID ${vatTreatment()!.vat_id}` : ""}.`,
 		// ONE LIST RATE (Marian 2026-08-30). The old copy claimed "the rate is the rate" while the
 		// catalog ran three of them (430 / 395 / 361) and the company SKU was quietly cheapest.
 		// Now every package is paid sessions x 395 at list; packages add FREE sessions, never a
-		// lower rate, and the channel takes 10% off every package. Lead with the package price
-		// and the free sessions, then the percentage.
-		`ONE LIST RATE: ${eur(listRate())} per paid 60-minute session, every package, every buyer. A company pays exactly what an individual pays. Packages add free sessions, not a lower rate: ${fq ? `a quarter is ${fq.sessions} sessions for ${eur(fq.price)} (${sessionsBreakdown(fq)}), ${eur(fq.ai_channel_price!)} through this channel` : "see the catalog"}. Lead with the package price and the free sessions; the free sessions are part of the package, never call them a discount.`,
+		// lower rate. No channel discount since 2026-10-18.
+		`ONE LIST RATE: ${eur(listRate())} per paid 60-minute session, every package, every buyer, every door. A company pays exactly what an individual pays. Packages add free sessions, not a lower rate: ${fq ? `a quarter is ${fq.sessions} sessions for ${eur(fq.price)} (${sessionsBreakdown(fq)})` : "see the catalog"}. Lead with the package price and the free sessions; the free sessions are part of the package, never call them a discount.`,
 		...(vatTreatment()?.registered
 			? [
 					`VAT: prices are net. A private individual is invoiced with ${vatTreatment()!.cz_rate_pct}% Czech VAT, so quote them the GROSS figure — it is the number that leaves their account and not knowing it has cost real buyers. A company in another EU state with a valid VAT ID pays net under the reverse charge (Art. 44, Directive 2006/112/EC); a Czech company pays ${vatTreatment()!.cz_rate_pct}%. The brief and the offer state the right one for the buyer in front of you — never say only "excluding VAT" and stop there.`,
 				]
 			: []),
-		...(d
-			? [
-					// The floor is stated as what it actually is — a floor on the RATE, before the
-					// B2B free-sessions concession, which by arithmetic takes the effective rate
-					// below it at every rung of the ladder. Claiming "never goes below €361"
-					// while handing over €249.92/session was the contradiction three testers
-					// found independently. Whether the ladder or the floor gives is Marian's
-					// pricing call; until he makes it, the terms must not assert an absolute the
-					// system does not keep.
-					`The ONLY discount that exists is this channel's ${d.pct}% off every package, applied automatically when the inquiry is sent through here. Booking the intro call is NOT a condition of it (changed 2026-08-21). Never invent, speculate about, or negotiate any other discount, and never present the price as negotiable downward. ${eur(d.floor_eur_per_session)} per session is the floor and it never moves, for any package or any buyer.`,
-					`ELC members: same ${meta.member_rate.pct}% AI-door price, and they qualify right away rather than being onboarded to it. If the visitor says they are a member, run the same flow and note the membership in the brief; Marian verifies it at invoice. There is no better-of comparison left to make — one discount, one door.`,
-				]
-			: offer
-				? [`${offer.name} carries no AI-channel discount — ${eur(offer.price)} is the published list price, the same one on ${meta.pricing_url}. No scarcity language belongs on this offer, or on any other.`]
-				: []),
+		// NO DISCOUNT (Marian 2026-10-18). The 10% AI-channel discount and the ELC member 10% are
+		// gone. The floor is a floor on the charged RATE, before the B2B free-sessions concession,
+		// which by arithmetic takes the effective rate below it — that is computed and disclosed,
+		// never argued away (the 2026-08-21 decision, unchanged).
+		`There is NO discount — ELC members included. ${meta.no_discount.rule} If they ask for one, say so plainly and why: ${meta.no_discount.why} Same prices as ${meta.pricing_url}. Never invent, speculate about, or negotiate a discount, and never present the price as negotiable downward. ${eur(meta.floor_eur_per_session)} per session is the floor and it never moves, for any package or any buyer.`,
+		`Claim codes from earlier offers (${meta.no_discount.legacy_claim_codes}) If a visitor holds one and expects a percentage off, the answer is the published price.`,
+		...(offer ? [`${offer.name} is ${eur(offer.price)}, the published list price, the same one on ${meta.pricing_url}. No scarcity language belongs on this offer, or on any other.`] : []),
 		`The "${meta.guarantee.rule}" rule is a quality guarantee, not a discount. It applies regardless and stacks with nothing because it is not a price mechanic. Same for: ${meta.stop_rule}`,
 		// DECIDED 2026-08-21: the floor governs the CHARGED rate; free sessions sit outside it.
 		// The previous wording ("the final rate never goes below 361") was broken by the first
