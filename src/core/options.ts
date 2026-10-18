@@ -121,7 +121,7 @@ export function mentoringOptions() {
 			network:
 				`Beyond the sessions: Marian runs the engineering leaders community (${meta.cross_sell.url}) and introduces people he trusts to CTOs directly, as a coffee rather than through a recruitment process. Mention it ONLY if the visitor raises careers or moving, and never as a promise or as part of a package — it is not a placement service and it depends on him knowing the person well enough to put his name on it.`,
 			protections:
-				"If they ask what protects them, the two terms are already in the terms block and both are real: a session the mentee rates below 7/10 is free, and if it is not working by session 2 they stop and the rest is on Marian. Do not restate them unprompted — they land as reassurance when nobody asked.",
+				"If they ask what protects them, the two terms are already in the terms block and both are real: a session the mentee rates below 8/10 is free, and if it is not working by session 2 they stop and the rest is on Marian. Do not restate them unprompted — they land as reassurance when nobody asked.",
 		},
 		pricing_defense: {
 			points: PRICING_DEFENSE,

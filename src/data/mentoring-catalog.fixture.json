@@ -39,9 +39,9 @@
       "payment_terms_company": "Book now. Your company's purchase order is collected after session 1, and the invoice goes against it."
     },
     "guarantee": {
-      "threshold": 7,
+      "threshold": 8,
       "scale": 10,
-      "rule": "Any session rated below 7/10 is free. Mentees rate every session from 0 to 10 right after it. Since 2024 the average is 9.17/10.",
+      "rule": "Any session rated below 8/10 is free. Mentees rate every session from 0 to 10 right after it. Since 2024 the average is 9.79/10.",
       "note": "Quality guarantee, not a price mechanic. Applies regardless, stacks with nothing because it isn't a discount."
     },
     "stop_rule": "If it's not working by session 2, we stop and the rest is on Marian.",

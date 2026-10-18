@@ -310,7 +310,7 @@ describe("the offer email is a document a finance team can act on (Anna, Petra, 
 		expect(h).toContain("5 paid + 1 free"); // the free session is part of the package, not a discount
 		expect(h).toContain("3 monthly payments of €659"); // decisive for a self-funding buyer
 		expect(h).not.toMatch(/you save|AI channel|−\d+%/);
-		expect(h).toContain("7/10");
+		expect(h).toContain("8/10");
 		expect(h).toContain("session 2"); // the stop rule, previously dropped
 	});
 
@@ -398,10 +398,10 @@ describe("no pre-computed ROI claim inside a system that forbids ROI (Andrew, Ra
 describe("proof claims do not contradict themselves (Andrew, Ravi)", () => {
 	it("the average review is quoted with one denominator everywhere", () => {
 		const payload = JSON.stringify(mentoringOptions());
-		expect(payload).toContain("9.2/10");
+		expect(payload).toContain("9.79/10");
 		// "9.2/10 across 3,400+ sessions" and "across 300+ reviews" both used to ship, in the
 		// same response — figures 11x apart for the same claim.
-		expect(payload).not.toMatch(/9\.2\/10[^"]{0,40}3,400/);
+		expect(payload).not.toMatch(/9\.79\/10[^"]{0,40}3,400/);
 		expect(payload).not.toMatch(/3,400\+ sessions the average/);
 	});
 });

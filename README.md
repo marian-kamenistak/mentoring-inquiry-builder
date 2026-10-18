@@ -1,6 +1,6 @@
 # AI mentoring fit and book — MCP server
 
-Hire an engineering-leadership mentor through your AI assistant. This remote MCP server builds a 1:1 mentoring inquiry with [Marian Kamenistak](https://www.marian.coach/?ref=github) — 3,600+ sessions with 317 leaders from 17 countries since 2019, rated 9.17/10 on average since 2024 — and ends with a formal itemized offer in your inbox.
+Hire an engineering-leadership mentor through your AI assistant. This remote MCP server builds a 1:1 mentoring inquiry with [Marian Kamenistak](https://www.marian.coach/?ref=github) — 3,600+ sessions with 317 leaders from 17 countries since 2019, rated 9.79/10 on average since 2024 — and ends with a formal itemized offer in your inbox.
 
 **10 minutes, no discount.** Use Marian's AI tool to evaluate our mentoring fit and book your first session in 10 minutes. Same prices as the [website](https://www.marian.coach/pricing/?ref=github): the quarter is 6 sessions (5 paid + 1 free) for 1,975 EUR, whichever door you come through. Marian is an AI freak, and this is a time saver. Start dates depend on the open mentee slots on the [live capacity chart](https://www.marian.coach/?ref=github).
 
@@ -44,7 +44,7 @@ Read-only REST for scripts: [`/api/openapi.json`](https://www.marian.coach/mcp/m
 - Every price is computed server-side from the same published catalog the website renders. No tool accepts a price as input, so nothing you or your model says can move the number.
 - No discount through any door, one B2B concession (free sessions, only on 3+ sponsored leaders or Mentor-in-Residence, confirmed by Marian on a call), floor at 329 EUR/session. Try to out-negotiate it; the failed attempts are the point.
 - The offer only sends after an explicit yes to the exact price.
-- Any session rated below 7/10 is free — a quality guarantee, not a price mechanic.
+- Any session rated below 8/10 is free — a quality guarantee, not a price mechanic.
 
 ## Stack
 

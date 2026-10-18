@@ -12,7 +12,7 @@ export const MC_FACTS = {
 	leaders: "300+",
 	countries: 17,
 	since: 2019,
-	avgReview: "9.2/10",
+	avgReview: "9.79/10",
 	reviewCount: "300+",
 	testimonials: "40+",
 	companySponsoredPct: 78,
@@ -32,7 +32,7 @@ export const WHY_MARIAN: readonly string[] = [
 	// sloppiness or a self-selected sample. Reviews is the defensible one; it is what the
 	// review log actually counts.
 	`Track record: ${MC_FACTS.sessions} paid 1:1 sessions with ${MC_FACTS.leaders} engineering leaders from ${MC_FACTS.countries} countries since ${MC_FACTS.since}, average review ${MC_FACTS.avgReview} across ${MC_FACTS.reviewCount} reviews. ${MC_FACTS.testimonials} named testimonials at ${SITE}/testimonials/.`,
-	`Skin in the game: every session is a 7+/10 in value or it is free — and the average across ${MC_FACTS.reviewCount} reviews is ${MC_FACTS.avgReview}.`,
+	`Skin in the game: every session is an 8+/10 in value or it is free — and the average across ${MC_FACTS.reviewCount} reviews is ${MC_FACTS.avgReview}.`,
 	`Been in the seat: ${MC_FACTS.mews} — an operator running the playbook this week, not a coach who retired in 2018.`,
 	`CEE-native, US-fluent: ${MC_FACTS.bayArea}. Mentoring on Prague time in EN/CZ/SK.`,
 	`Still highly technical. Bullshit him on estimates, code quality or architecture and he will ask to see the code — or your AI skill set.`,
@@ -48,8 +48,8 @@ export const PRICING_DEFENSE: readonly string[] = [
 	// Risk reversal leads (2026-08-21 /ai-mcp-test): it is the only line with a monetary
 	// consequence, a clear trigger and a defined remedy, and the buyer who reads sales
 	// mechanics for a living called it "everything the 16-minute promise pretends to be".
-	`Risk reversal: free 30-minute intro. Any session below 7/10 is free. And if it is not working by session 2, you stop and the rest is on Marian. The free intro exists precisely to test the fit before a single euro moves.`,
-	`Market comparison: executive coaches at this seniority commonly run 300-600 EUR per hour, usually with no guarantee attached. Marian's sessions carry the 7+/10-or-free rule and a ${MC_FACTS.avgReview} average across ${MC_FACTS.reviewCount} reviews.`,
+	`Risk reversal: free 30-minute intro. Any session below 8/10 is free. And if it is not working by session 2, you stop and the rest is on Marian. The free intro exists precisely to test the fit before a single euro moves.`,
+	`Market comparison: executive coaches at this seniority commonly run 300-600 EUR per hour, usually with no guarantee attached. Marian's sessions carry the 8+/10-or-free rule and a ${MC_FACTS.avgReview} average across ${MC_FACTS.reviewCount} reviews.`,
 	`${MC_FACTS.companySponsoredPct}% of mentees are company-sponsored — same rate whether you or your company pays. No corporate markup on top for the company buyer.`,
 	// The two ROI lines that used to open this list ("one prevented mis-hire pays for 18
 	// quarters of mentoring", "one prevented bad architecture call pays for years") were

@@ -619,7 +619,7 @@ export function offerEmailHtml(args: {
         ${freeSessions ? `<tr><td style="${rowStyle}">B2B concession (proposed)</td><td align="right" style="${rowStyle}white-space:nowrap;">+${freeSessions} free sessions</td></tr>` : ""}
         ${offer.program?.async_access ? `<tr><td style="${rowStyle}">Between sessions</td><td align="right" style="${rowStyle}">Async access (Slack/WhatsApp, fair use)</td></tr>` : ""}
         ${offer.installments && leaders === 1 ? `<tr><td style="${rowStyle}">Payment option</td><td align="right" style="${rowStyle}white-space:nowrap;">${offer.installments.count} monthly payments of ${eur(offer.installments.eur)}</td></tr>` : ""}
-        <tr><td style="${rowStyle}">Guarantee</td><td align="right" style="${rowStyle}">Any session below 7/10 is free</td></tr>
+        <tr><td style="${rowStyle}">Guarantee</td><td align="right" style="${rowStyle}">Any session below 8/10 is free</td></tr>
         <tr><td style="${rowStyle}">If it isn't working</td><td align="right" style="${rowStyle}">${esc(meta.stop_rule)}</td></tr>
         ${programHtml}
       </table>
@@ -647,7 +647,7 @@ export function offerEmailHtml(args: {
           <a href="${bookUrl ?? meta.booking_url}" style="display:inline-block;background-color:${accent};color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;padding:14px 26px;border-radius:999px;border:1px solid #b02064;">${bookUrl ? "Book your first session" : "Book the intro call"}</a>
         </td></tr>
       </table>
-      <p style="margin:30px 0 4px;font-size:15px;line-height:1.65;color:#333;">${bookUrl ? "If the first session does not work for you, rate it below 7/10 and it is free. If it is not working by session 2, we stop and the rest is on me." : "Nothing here is a contract — the intro call is where we both check the fit. If it's not a fit, no hard feelings and no invoice."}</p>
+      <p style="margin:30px 0 4px;font-size:15px;line-height:1.65;color:#333;">${bookUrl ? "If the first session does not work for you, rate it below 8/10 and it is free. If it is not working by session 2, we stop and the rest is on me." : "Nothing here is a contract — the intro call is where we both check the fit. If it's not a fit, no hard feelings and no invoice."}</p>
       <p style="margin:16px 0 0;font-size:15px;line-height:1.5;color:#171717;font-weight:600;">Marian Kamenistak</p>
       <p style="margin:0;font-size:13px;line-height:1.5;color:#888;">3,400+ sessions · 300+ leaders · 9.2/10 across 300+ reviews · <a href="https://www.marian.coach/?ref=offer-email" style="color:${accent};">marian.coach</a></p>
     </td></tr>
