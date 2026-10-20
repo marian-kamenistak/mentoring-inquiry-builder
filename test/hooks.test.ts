@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { isCancellationPayload, ga4CallBookedBody, extractHeardFrom, shouldFireCallBooked, handleBookingHook, extractAttendeeName, formatMeetingWhen } from "../src/hooks";
+import { isCancellationPayload, ga4CallBookedBody, extractHeardFrom, shouldFireCallBooked, handleBookingHook, extractAttendeeName, formatMeetingWhen, extractBookingItem } from "../src/hooks";
 
 // Shape of a real Attio list-entry read. `mentee_stage` ("Mentee stage") is a STATUS-type
 // attribute, so its value nests under .status.title — a select would nest under .option.title.
@@ -303,5 +303,40 @@ describe("real Reclaim payloads (captured 2026-08-21)", () => {
 	it("falls back to Prague when the attendee zone is absent", () => {
 		const noZone = { ...RECLAIM_CREATED, meeting: { ...RECLAIM_CREATED.meeting, attendee: { attendee_name: "X" } } };
 		expect(formatMeetingWhen(noZone)).toBe("Monday, 31 August at 21:30");
+	});
+});
+
+describe("data-item — the package the booker clicked (2026-10-20)", () => {
+	const SECRET_I = "s3cr3t";
+	const urlI = new URL(`https://x/mcp/mentoring/api/booking-hook?secret=${SECRET_I}`);
+	const postI = (body: any) =>
+		new Request("https://x/mcp/mentoring/api/booking-hook", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+	afterEach(() => vi.unstubAllGlobals());
+
+	it("extractBookingItem accepts a slug and rejects anything else", () => {
+		expect(extractBookingItem({ meeting: { custom_data: { data: { item: "first-quarter" } } } })).toBe("first-quarter");
+		expect(extractBookingItem({ meeting: { custom_data: { data: { item: "<script>" } } } })).toBeNull();
+		expect(extractBookingItem({})).toBeNull();
+	});
+
+	it("stamps plan_clicked on the Person and sends item with call_booked", async () => {
+		const calls: { url: string; body: string }[] = [];
+		vi.stubGlobal("fetch", vi.fn(async (u: any, init?: any) => {
+			const url = String(u);
+			calls.push({ url, body: String(init?.body ?? "") });
+			if (url.includes("/people/records/query")) return new Response(JSON.stringify({ data: [{ id: { record_id: "p1" }, values: {} }] }), { status: 200 });
+			if (url.includes("/people/records/p1/entries")) return new Response(JSON.stringify({ data: [entryAtStage("Not yet")] }), { status: 200 });
+			return new Response(JSON.stringify({ data: {} }), { status: 200 });
+		}));
+		const res = await handleBookingHook(postI({ email: "real@corp.com", meeting: { custom_data: { data: { item: "first-quarter" } } } }), {
+			BOOKING_HOOK_SECRET: SECRET_I,
+			ATTIO_TOKEN: "t",
+			GA4_MEASUREMENT_ID: "G-X",
+			GA4_API_SECRET: "s",
+		}, urlI);
+		expect(((await res.json()) as any).item).toBe("first-quarter");
+		expect(calls.some((c) => c.url.endsWith("/people/records/p1") && c.body.includes('"plan_clicked":"first-quarter"'))).toBe(true);
+		const ga4 = calls.find((c) => c.url.includes("google-analytics.com"));
+		expect(JSON.parse(ga4!.body).events[0].params.item).toBe("first-quarter");
 	});
 });

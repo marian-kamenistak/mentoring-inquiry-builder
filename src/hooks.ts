@@ -254,6 +254,17 @@ export function ga4BookingBody(eventName: string, clientId: string, params: Reco
 	};
 }
 
+/**
+ * The package the booker clicked, forwarded by mc-web's /meet as `?data-item=` and by Reclaim as
+ * `custom_data.data.item` (2026-10-20, /web-cta-funnel). Before this, 0 of 46 `call_booked`
+ * events in 90 days carried the package. Same hard validation as the attr token: it becomes an
+ * Attio value and a GA4 param. UNVERIFIED end to end until a real booking shows it, like data-attr.
+ */
+export function extractBookingItem(body: any): string | null {
+	const v = body?.meeting?.custom_data?.data?.item;
+	return typeof v === "string" && /^[a-z0-9-]{1,40}$/.test(v) ? v : null;
+}
+
 /** Back-compat wrapper for the intro conversion. */
 export const ga4CallBookedBody = (clientId: string, params: Record<string, string | number>) => ga4BookingBody("call_booked", clientId, params);
 
@@ -333,6 +344,8 @@ export async function handleBookingHook(request: Request, env: HookEnv, url: URL
 		const v = body?.meeting?.custom_data?.data?.attr;
 		return typeof v === "string" && /^[0-9a-f]{16}$/.test(v) ? v : null;
 	})();
+	const item = extractBookingItem(body);
+	if (item) console.log(`booking-hook item ${item}`);
 	let email = (body.email ?? body?.meeting?.attendee?.attendee_email ?? "").trim().toLowerCase();
 	if (!email) {
 		const found = raw.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi) ?? [];
@@ -474,6 +487,18 @@ export async function handleBookingHook(request: Request, env: HookEnv, url: URL
 						}
 					}
 
+					// The package they clicked on the way to the calendar. Overwrites plan_clicked on
+					// purpose: the link they booked through is the truth about THIS booking (same
+					// "latest click wins" rule as mc-web's refreshableValues).
+					if (item && val("plan_clicked") !== item) {
+						const ok = await attioWrite(`https://api.attio.com/v2/objects/people/records/${personId}`, {
+							method: "PATCH",
+							headers,
+							body: JSON.stringify({ data: { values: { plan_clicked: item } } }),
+						}, "plan_clicked from data-item");
+						if (ok) personValues = { ...personValues, plan_clicked: [{ value: item }] };
+					}
+
 					// Funnel: Lead → Intro call. Only an actual transition counts — see shouldFireCallBooked.
 					const pipe = (entriesData.data ?? []).find((e: any) => e.list_api_slug === PIPELINE_LIST_SLUG);
 					let pipeEntry: any = pipe;
@@ -531,7 +556,7 @@ export async function handleBookingHook(request: Request, env: HookEnv, url: URL
 						await fetch(`https://www.google-analytics.com/mp/collect?measurement_id=${env.GA4_MEASUREMENT_ID}&api_secret=${env.GA4_API_SECRET}`, {
 							method: "POST",
 							body: JSON.stringify(
-								ga4BookingBody(door.ga4Event, cid, { source: val("first_touch_source") || "direct", campaign: val("first_touch_campaign") || "", gclid: val("gclid") || "" })
+								ga4BookingBody(door.ga4Event, cid, { source: val("first_touch_source") || "direct", campaign: val("first_touch_campaign") || "", gclid: val("gclid") || "", item: item ?? "" })
 							),
 						}).catch((e) => console.error("ga4 mp exception", String(e)));
 					}
@@ -598,7 +623,7 @@ export async function handleBookingHook(request: Request, env: HookEnv, url: URL
 			method: "POST",
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({
-				text: `${isTestBooking ? `:test_tube: TEST ${kind} booking (nothing written)` : `${door.slackIcon} ${door.slackLabel}`} — *${matchedName}*${claimFromNote ? ` · claim ${claimFromNote}` : ""}${
+				text: `${isTestBooking ? `:test_tube: TEST ${kind} booking (nothing written)` : `${door.slackIcon} ${door.slackLabel}`} — *${matchedName}*${item ? ` · package \`${item}\`` : ""}${claimFromNote ? ` · claim ${claimFromNote}` : ""}${
 					// A test booking never reaches Attio, so it must not print the miss message. It used
 					// to: `locked` and `createdPerson` are both false for a SKIPPED lookup and for a genuine
 					// miss, so every probe announced "no matching Attio entry found (check manually)" — a
@@ -624,5 +649,5 @@ export async function handleBookingHook(request: Request, env: HookEnv, url: URL
 		}).catch((e) => console.error("booking-hook slack exception", String(e)));
 	}
 
-	return json({ ok: true, path: kind, stage: door.stage, locked, created_person: createdPerson, claim: claimFromNote, prep_emailed: prepEmailed });
+	return json({ ok: true, path: kind, stage: door.stage, locked, created_person: createdPerson, claim: claimFromNote, item, prep_emailed: prepEmailed });
 }
